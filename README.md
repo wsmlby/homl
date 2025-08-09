@@ -111,14 +111,22 @@ homl auth hugging-face <your-hf-token>
 ```
 You can also use `homl auth hugging-face --auto` to automatically load the token from `~/.cache/huggingface/token`.
 
-## TODO
-
-*   Enable multiple models running at the same time (`server/homl_server/main.py`)
-*   Add support for ROCm and XPU (`cli/homl_cli/main.py`)
+## TODO / Roadmap
+*   Improve vLLM startup time to support faster switching between models.
+*   MultiGPU support: Enable multiple models running at the same time on different GPUs.
+*   Enable multiple models running at the same time on the same GPU, this means we need to be able to estimate the vRAM usage of each model and manage the memory accordingly.
+*   Add support for ROCm, Apple Silicon, and other architectures.
+*   Add support for loading adapter layers.
+*   Add support for endpoints other than chatcompletion, such as embeddings and text generation.
 
 ## Contributing
 
 We welcome contributions! If you're interested in helping out, please check out the issues section and feel free to open a pull request.
+
+We are particularly looking for help with:
+*   Help to host CI for ROCm and Apple Silicon.
+*   Testing and verifying models for the curated list.
+*   Improving the CLI experience.
 
 ## License
 

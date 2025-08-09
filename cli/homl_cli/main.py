@@ -98,7 +98,7 @@ def get_platform_config(accelerator: str) -> Dict[str, Any]:
     # For now, they are conceptual names.
     if accelerator == "cuda":
         return {
-            "image": "homl/server:latest-cuda",
+            "image": "ghcr.io/wsmlby/homl/server:latest-cuda",
             "deploy_resources": """
       resources:
         reservations:
@@ -111,7 +111,7 @@ def get_platform_config(accelerator: str) -> Dict[str, Any]:
     #TODO: Add support for ROCm and XPU in the future
     else:  # cpu
         return {
-            "image": "homl/server:latest-cpu",
+            "image": "ghcr.io/wsmlby/homl/server:latest-cpu",
             "deploy_resources": "",
         }
 
@@ -216,7 +216,7 @@ def install(insecure_socket: bool, upgrade: bool):
     socket_dir = homl_dir / "run"
     model_dir = homl_dir / "models"
     compose_path = homl_dir / "docker-compose.yml"
-    template_path = get_resource_path("homl_cli/docker-compose.yml.template")
+    template_path = get_resource_path("docker-compose.yml.template")
     user_etc_path = homl_dir / "etc_pwd_tmp"
 
     socket_dir.mkdir(parents=True, exist_ok=True)
@@ -254,21 +254,31 @@ def install(insecure_socket: bool, upgrade: bool):
     # 7. Run docker-compose up
     click.echo("🐳 Starting server with Docker Compose... (This may take a moment)")
 
+    def print_post_install_message():
+        click.secho("✅ HoML server started successfully!", fg="green")
+        click.echo("\nNext steps:")
+        click.echo("  1. Pull a model, e.g., 'homl pull qwen3:0.6b'")
+        click.echo("  2. Run the model: 'homl run qwen3:0.6b'")
+        click.echo("  3. Chat with it: 'homl chat qwen3:0.6b'")
+        click.echo("\nYour OpenAI-compatible API is available at:")
+        click.secho("  http://0.0.0.0:7456", fg="cyan")
+
     try:
         if upgrade:
             subprocess.run(["docker", "compose", "-f", str(compose_path), "pull"], check=True)
         subprocess.run(["docker", "compose", "-f", str(compose_path), "up", "-d"], check=True)
-        click.secho("✅ HoML server started successfully!", fg="green")
+        print_post_install_message()
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         click.echo("Could not run 'docker-compose' directly. Trying with 'sudo'.")
         try:
             if upgrade:
                 subprocess.run(["sudo", "docker-compose", "-f", str(compose_path), "pull"], check=True)
             subprocess.run(["sudo", "docker-compose", "-f", str(compose_path), "up", "-d"], check=True)
-            click.secho("✅ HoML server started successfully with sudo!", fg="green")
+            print_post_install_message()
         except Exception as sudo_e:
             click.secho(f"❌ Failed to start server with sudo: {sudo_e}", fg="red")
             click.secho("Please ensure Docker and Docker Compose are installed and you have permissions to use them.", fg="red")
+
 
 
 @main.command()

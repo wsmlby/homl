@@ -23,7 +23,7 @@ pyinstaller \
     --name "$BINARY_NAME" \
     --onefile \
     --console \
-    --add-data "$DATA_FILE:homl_cli" \
+    --add-data "$DATA_FILE:." \
     "$ENTRY_POINT"
 
 echo "---"
