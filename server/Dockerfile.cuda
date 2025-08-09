@@ -1,0 +1,27 @@
+# This Dockerfile builds the final HoML Server image for NVIDIA CUDA.
+# It layers our application code on top of the official vLLM OpenAI image.
+
+# Base image for CUDA builds
+FROM vllm/vllm-openai:gptoss
+
+# Set the working directory
+WORKDIR /app
+
+
+# Copy requirements.txt and install dependencies
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+# Optionally install from pyproject.toml if needed
+# COPY pyproject.toml .
+# RUN pip install .
+ENV ACCELERATOR=CUDA
+# Copy our application source code
+COPY ./homl_server ./homl_server
+WORKDIR /app/homl_server
+# The base image exposes port 8000, so we don't need to do it again.
+# EXPOSE 8000
+
+# We overwrite the base image's entrypoint to run our custom Ray Serve
+# application, which provides dynamic model management.
+ENTRYPOINT [ "python3", "-u", "main.py"]

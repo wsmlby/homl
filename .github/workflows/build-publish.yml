@@ -1,0 +1,80 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-cpu:
+    name: Build and Publish CPU Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout HoML Repository
+        uses: actions/checkout@v4
+
+      - name: Checkout vLLM Repository
+        uses: actions/checkout@v4
+        with:
+          repository: vllm-project/vllm
+          path: vllm-src
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push vLLM CPU Base Image
+        id: build_base
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/homl-vllm-cpu-base:latest
+          docker buildx build \
+            -t ${IMAGE_ID} \
+            -f server/Dockerfile.cpu \
+            ./vllm-src \
+            --push
+          echo "image_id=${IMAGE_ID}" >> $GITHUB_OUTPUT
+
+      - name: Build and Push HoML Server CPU Image
+        working-directory: ./server
+        run: |
+          docker buildx build \
+            --build-arg BASE_IMAGE=${{ steps.build_base.outputs.image_id }} \
+            -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cpu \
+            -f Dockerfile.cpu.app \
+            . \
+            --push
+
+  build-cuda:
+    name: Build and Publish CUDA Image
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout HoML Repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push HoML Server CUDA Image
+        working-directory: ./server
+        run: |
+          docker buildx build \
+            -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cuda \
+            -f Dockerfile.cuda \
+            . \
+            --push

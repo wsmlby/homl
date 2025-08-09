@@ -1,0 +1,42 @@
+name: Build and Release CLI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    name: Build and Release for Linux x64
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Build binary
+      working-directory: ./cli
+      run: |
+        # Grant execute permissions to the build script
+        chmod +x build.sh
+        # Run the build script
+        ./build.sh
+      shell: bash
+
+    - name: Rename binary for release
+      working-directory: ./cli
+      run: |
+        mv dist/homl "dist/homl-linux-amd64"
+      shell: bash
+
+    - name: Create Release and Upload Asset
+      uses: softprops/action-gh-release@v1
+      with:
+        files: cli/dist/homl-linux-amd64
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

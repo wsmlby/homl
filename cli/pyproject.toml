@@ -1,0 +1,14 @@
+[project]
+name = "homl-cli"
+version = "0.0.1"
+description = "CLI for HoML"
+dependencies = [
+    "click",
+    "grpcio",
+    "grpcio-tools",
+    "protobuf",
+    "requests",
+]
+
+[project.scripts]
+homl = "homl_cli.main:main"

@@ -1,0 +1,6 @@
+grpcio
+grpcio-tools
+fastapi
+uvicorn
+httpx
+huggingface_hub
