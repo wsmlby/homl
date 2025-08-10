@@ -5,7 +5,7 @@ set -e
 # It should be run from the 'cli/' directory.
 apt list --installed |grep binutils || {
     echo "binutils is not installed. Installing..."
-    apt install -y binutils
+    apt update && apt install -y binutils
 }
 # --- Dependencies ---
 echo "Installing build dependencies from requirements.txt..."
