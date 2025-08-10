@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-export PATH="/opt/python/cp39-cp39/bin:$PATH"
-
 # This script builds the homl CLI into a single binary using PyInstaller.
 # It should be run from the 'cli/' directory.
 
