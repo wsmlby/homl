@@ -3,9 +3,9 @@ set -e
 
 # This script builds the homl CLI into a single binary using PyInstaller.
 # It should be run from the 'cli/' directory.
-api list --installed |grep binutils || {
+apt list --installed |grep binutils || {
     echo "binutils is not installed. Installing..."
-    sudo apt install -y binutils
+    apt install -y binutils
 }
 # --- Dependencies ---
 echo "Installing build dependencies from requirements.txt..."
