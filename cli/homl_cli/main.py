@@ -76,6 +76,62 @@ def check_and_install_docker():
     if docker_exists and compose_exists:
         return True
 
+    if docker_exists and not compose_exists:
+        click.secho("🔥 Docker Compose (plugin) not found.", fg="yellow")
+        # Try to install docker compose via local package manager
+        distro = None
+        distro_like = None
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("ID="):
+                        distro = line.strip().split("=")[1].strip('"')
+                    elif line.startswith("ID_LIKE="):
+                        distro_like = line.strip().split("=")[1].strip('"')
+        except Exception:
+            pass
+        installed = False
+        if distro in ["ubuntu", "debian"]:
+            click.echo("Attempting to install docker-compose-plugin via apt...")
+            try:
+                subprocess.run(["sudo", "apt-get", "update"], check=True)
+                subprocess.run(["sudo", "apt-get", "install", "-y", "docker-compose-plugin"], check=True)
+                # Re-check if compose is now available
+                result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode == 0:
+                    click.secho("✅ Docker Compose plugin installed successfully.", fg="green")
+                    return True
+                else:
+                    click.secho("❌ Docker Compose plugin installation failed.", fg="red")
+            except Exception as e:
+                click.secho(f"❌ Failed to install docker-compose-plugin: {e}", fg="red")
+        elif distro in ["fedora", "centos", "rhel", "amzn"] or (distro_like and "fedora" in distro_like):
+            click.echo("Attempting to install docker-compose-plugin via dnf...")
+            try:
+                subprocess.run(["sudo", "dnf", "install", "-y", "docker-compose-plugin"], check=True)
+                result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode == 0:
+                    click.secho("✅ Docker Compose plugin installed successfully.", fg="green")
+                    return True
+                else:
+                    click.secho("❌ Docker Compose plugin installation failed.", fg="red")
+            except Exception as e:
+                click.secho(f"❌ Failed to install docker-compose-plugin: {e}", fg="red")
+        elif distro in ["arch", "manjaro"]:
+            click.echo("Attempting to install docker-compose via pacman...")
+            try:
+                subprocess.run(["sudo", "pacman", "-Sy", "docker-compose"], check=True)
+                result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode == 0:
+                    click.secho("✅ Docker Compose installed successfully.", fg="green")
+                    return True
+                else:
+                    click.secho("❌ Docker Compose installation failed.", fg="red")
+            except Exception as e:
+                click.secho(f"❌ Failed to install docker-compose: {e}", fg="red")
+        # If not installed, fallback to official script
+        click.secho("Could not install Docker Compose plugin via package manager.", fg="yellow")
+
     click.secho("🔥 Docker or Docker Compose not found.", fg="yellow")
     if click.confirm("May I attempt to install them using the official script? (Requires sudo)"):
         try:
