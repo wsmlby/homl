@@ -8,11 +8,13 @@ services:
       - HOML_INSECURE_SOCKET=${HOML_INSECURE_SOCKET}
       - HOME=/models/home/
       - VLLM_SKIP_P2P_CHECK=1
+      - HOML_MODEL_LOAD_TIMEOUT=${HOML_MODEL_LOAD_TIMEOUT}
+      - HOML_MODEL_UNLOAD_IDLE_TIME=${HOML_MODEL_UNLOAD_IDLE_TIME}
     volumes:
       - "${SOCKET_VOLUME_PATH}:/var/run/homl"
       - "${MODEL_CACHE_PATH}:/models"
       - "${PWD_PATH}:/etc/passwd"
     pid: "host"
     ports:
-      - "7456:8080"
+      - "${HOML_PORT}:8080"
     deploy: ${HOML_DEPLOY_RESOURCES}

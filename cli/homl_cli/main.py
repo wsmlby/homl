@@ -63,6 +63,55 @@ def auth():
 main.add_command(auth)
 main.add_command(server)
 
+# Config keys and descriptions
+CONFIG_KEYS = {
+    "port": "Port number for the OpenAI-compatible API server (default: 7456)",
+    "model_home": "Model location on the host (default: ~/.homl/models)",
+    "model_load_timeout": "Timeout (seconds) for model loading (default: 180)",
+    "model_unload_idle_time": "Idle time (seconds) before unloading a model (default: 600)",
+    "socket_path": "Path to the server socket file"
+}
+
+# Config CLI group
+@click.group(help="Manage HoML configuration. Use 'homl config list' to see all available keys.")
+def config_cli():
+    pass
+
+@config_cli.command("get")
+@click.argument("key", required=True)
+def config_get(key):
+    """Get a config value."""
+    value = config.get_config_value(key)
+    if value is None:
+        click.echo(f"Key '{key}' not set.")
+    else:
+        click.echo(f"{key}: {value}")
+
+@config_cli.command("set")
+@click.argument("key", required=True)
+@click.argument("value", required=True)
+def config_set(key, value):
+    """Set a config value."""
+    if key not in CONFIG_KEYS:
+        click.secho(f"Unknown key '{key}'. Use 'homl config list' to see available keys.", fg="red")
+        return
+    config.set_config_value(key, value)
+    click.echo(f"Set '{key}' to '{value}'")
+    click.secho("Note: Changes to config will only take effect after you restart the HoML server.", fg="yellow")
+
+@config_cli.command("list")
+def config_list():
+    """List all available config keys and their descriptions."""
+    click.echo("Available config keys:")
+    for key, desc in CONFIG_KEYS.items():
+        value = config.get_config_value(key)
+        click.echo(f"- {key}: {desc}")
+        if value is not None:
+            # Do not print credentials or sensitive values
+            click.echo(f"    Current value: {value}")
+
+main.add_command(config_cli, name="config")
+
 @main.command()
 def version():
     """Show CLI and server version."""
@@ -250,9 +299,16 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
         click.echo(f"Currently only CUDA is supported for GPU acceleration. Using CPU mode instead.")
 
     # 4. Define paths
+
+    # Read config values
+    port = int(config.get_config_value("port", 7456))
+    model_home = config.get_config_value("model_home", str(config.CONFIG_DIR / "models"))
+    model_load_timeout = int(config.get_config_value("model_load_timeout", 180))
+    model_unload_idle_time = int(config.get_config_value("model_unload_idle_time", 600))
+
     homl_dir = config.CONFIG_DIR
     socket_dir = homl_dir / "run"
-    model_dir = homl_dir / "models"
+    model_dir = Path(model_home)
     compose_path = homl_dir / "docker-compose.yml"
     template_path = get_resource_path("docker-compose.yml.template")
     user_etc_path = homl_dir / "etc_pwd_tmp"
@@ -280,7 +336,10 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
         HOML_INSECURE_SOCKET=str(insecure_socket).lower() if insecure_socket else "false",
         PWD_PATH=str(user_etc_path.resolve()),
         SOCKET_VOLUME_PATH=str(socket_dir.resolve()),
-        MODEL_CACHE_PATH=str(model_dir.resolve())
+        MODEL_CACHE_PATH=str(model_dir.resolve()),
+        HOML_PORT=str(port),
+        HOML_MODEL_LOAD_TIMEOUT=str(model_load_timeout),
+        HOML_MODEL_UNLOAD_IDLE_TIME=str(model_unload_idle_time)
     )
 
     with open(compose_path, 'w') as f:
@@ -299,7 +358,7 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
         click.echo("  2. Run the model: 'homl run qwen3:0.6b'")
         click.echo("  3. Chat with it: 'homl chat qwen3:0.6b'")
         click.echo("\nYour OpenAI-compatible API is available at:")
-        click.secho("  http://0.0.0.0:7456", fg="cyan")
+        click.secho(f"  http://0.0.0.0:{port}", fg="cyan")
 
     try:
         if upgrade:
@@ -360,7 +419,8 @@ def ps():
 @click.argument('model_name')
 def chat(model_name):
     """Starts a chat session with a model using the OpenAI-compatible API."""
-    api_url = f"http://localhost:7456/v1/chat/completions"
+    port = config.get_config_value("port", 7456)
+    api_url = f"http://localhost:{port}/v1/chat/completions"
     # api_url = f"http://172.23.0.2:8100/v1/chat/completions"
     click.echo(f"Starting chat with model '{model_name}'. Type 'exit' to quit.")
     history = []

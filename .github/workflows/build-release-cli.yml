@@ -20,7 +20,7 @@ jobs:
 
     - name: Build binary
       working-directory: ./cli
-      run: ./build.sh
+      run: CLI_VERSION=${GITHUB_REF##*/} ./build.sh
       shell: bash
 
     - name: Rename binary for release
