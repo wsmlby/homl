@@ -46,70 +46,11 @@ It is a python package that can be installed with the one line installcation scr
 
 This lives under cli/
 
-## CLI Usage
+## Documentation
 
-### Managing the Server
+For detailed information on how to use the HoML CLI, please refer to our official documentation:
 
-**Install and start the HoML server:**
-```bash
-homl server install
-```
-This command automates the process of setting up and running the HoML server using Docker Compose.
-
-**Stop the HoML server:**
-```bash
-homl server stop
-```
-
-**Restart the HoML server:**
-```bash
-homl server restart
-```
-
-**View server logs:**
-```bash
-homl server log
-```
-
-### Managing Models
-
-**Pull a model from the Hugging Face Hub:**
-```bash
-homl pull google/gemma-3-4b-it
-```
-
-**Run a model:**
-```bash
-homl run gemma-3-4b-it
-```
-
-**Chat with a model:**
-```bash
-homl chat gemma-3-4b-it
-```
-
-**List running models:**
-```bash
-homl ps
-```
-
-**List locally available models:**
-```bash
-homl list
-```
-
-**Stop a running model:**
-```bash
-homl stop gemma-3-4b-it
-```
-
-### Authentication
-
-**Authenticate with Hugging Face:**
-```bash
-homl auth hugging-face <your-hf-token>
-```
-You can also use `homl auth hugging-face --auto` to automatically load the token from `~/.cache/huggingface/token`.
+[**HoML Documentation**](https://homl.dev/docs/cli.html)
 
 ## TODO / Roadmap
 *   Improve vLLM startup time to support faster switching between models.
