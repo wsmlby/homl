@@ -508,12 +508,12 @@ def create_api_app(model_manager):
                 continue
             alias_name = alias.get(model_id, model_id)
             models.append({
-                "id": model_id,
+                "id": alias_name,
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "homl",
                 "root": model_id,
-                "alias": alias_name
+                "parent": None,
             })
         return  JSONResponse({"data": models})
 
