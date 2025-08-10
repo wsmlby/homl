@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Installation script for HoML.
 # This script detects the user's environment, verifies it's a supported
@@ -22,7 +22,7 @@ echo "Detecting your OS and architecture..."
 
 # Detect OS using uname
 case "$(uname -s)" in
-    Linux*)
+    Linux*) 
         OS='linux'
         ;;
     *)
@@ -138,19 +138,22 @@ echo ""
 
 # --- PATH Check ---
 # If we installed to ~/.local/bin, check if it's in the PATH
-if [[ "$INSTALL_DIR" == "$HOME/.local/bin" ]]; then
-    if [[ ":$PATH:" != *":$INSTALL_DIR":* ]]; then
-        echo "⚠️  IMPORTANT:"
-        echo "The directory $INSTALL_DIR is not in your PATH."
-        echo "To use the 'homl' command directly, you need to add it."
-        echo ""
-        echo "Please add the following line to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc, or ~/.profile):"
-        echo "export PATH=\"$INSTALL_DIR:$PATH\""
-        echo ""
-        echo "After adding it, restart your shell or run 'source <your_shell_file>' to apply the changes."
-    else
-        echo "The 'homl' command is now available in your shell."
-    fi
+if [ "$INSTALL_DIR" = "$HOME/.local/bin" ]; then
+    case ":$PATH:" in
+        *":$INSTALL_DIR:"*) 
+            echo "The 'homl' command is now available in your shell."
+            ;;
+        *)
+            echo "⚠️  IMPORTANT:"
+            echo "The directory $INSTALL_DIR is not in your PATH."
+            echo "To use the 'homl' command directly, you need to add it."
+            echo ""
+            echo "Please add the following line to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc, or ~/.profile):"
+            echo "export PATH=\"$INSTALL_DIR:$PATH\""
+            echo ""
+            echo "After adding it, restart your shell or run 'source <your_shell_file>' to apply the changes."
+            ;;
+    esac
 else
     echo "The 'homl' command should be available in your shell, as it was installed in a directory in your PATH."
 fi
