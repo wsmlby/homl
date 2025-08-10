@@ -1,5 +1,6 @@
 # --- New Implementation ---
 import hashlib
+import json
 import os
 import sys
 import threading
@@ -487,12 +488,23 @@ def create_api_app(model_manager):
                     async with httpx.AsyncClient() as client:
                         async with client.stream('POST', url, json=request, timeout=None) as upstream_response:
                             async for chunk in upstream_response.aiter_text():
+                                if chunk.startswith("data: "):
+                                    try:
+                                        data0 = json.loads(chunk[6:].strip())
+                                        data0["model"] = model_name
+                                        chunk = f"data: {json.dumps(data0)}\n\n"
+                                        logger.info(f"Updated chunk: {chunk}")
+                                    except json.JSONDecodeError:
+                                        pass
+                                    
                                 yield chunk
                 return StreamingResponse(generate_chunks(), media_type="text/event-stream")
             else:
                 async with httpx.AsyncClient() as client:
                     vllm_response = await client.post(url, json=request, timeout=30.0)
-                    return JSONResponse(vllm_response.json(), status_code=vllm_response.status_code)
+                    rst = vllm_response.json()
+                    rst['model'] = model_name
+                    return JSONResponse(rst, status_code=vllm_response.status_code)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"vLLM API error: {str(e)}")
         
