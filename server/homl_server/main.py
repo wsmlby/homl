@@ -440,6 +440,14 @@ class DaemonServicer(daemon_pb2_grpc.DaemonServicer):
 # FastAPI OpenAI-Compatible API
 def create_api_app(model_manager):
     app = FastAPI()
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
     import httpx
@@ -487,6 +495,27 @@ def create_api_app(model_manager):
                     return JSONResponse(vllm_response.json(), status_code=vllm_response.status_code)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"vLLM API error: {str(e)}")
+        
+    @app.get("/v1/models")
+    async def list_models():
+        logger.info("Listing available models")
+        _, alias = model_manager.load_alias()
+        _, manifest = model_manager.load_manifest()
+        models = []
+        for model_path in model_manager.list_model_paths():
+            model_id = manifest.get(model_path)
+            if not model_id:
+                continue
+            alias_name = alias.get(model_id, model_id)
+            models.append({
+                "id": model_id,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "homl",
+                "root": model_id,
+                "alias": alias_name
+            })
+        return  JSONResponse({"data": models})
 
     return app
 
