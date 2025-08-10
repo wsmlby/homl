@@ -76,64 +76,9 @@ def check_and_install_docker():
     if docker_exists and compose_exists:
         return True
 
-    if docker_exists and not compose_exists:
-        click.secho("🔥 Docker Compose (plugin) not found.", fg="yellow")
-        # Try to install docker compose via local package manager
-        distro = None
-        distro_like = None
-        try:
-            with open("/etc/os-release") as f:
-                for line in f:
-                    if line.startswith("ID="):
-                        distro = line.strip().split("=")[1].strip('"')
-                    elif line.startswith("ID_LIKE="):
-                        distro_like = line.strip().split("=")[1].strip('"')
-        except Exception:
-            pass
-        installed = False
-        if distro in ["ubuntu", "debian"]:
-            click.echo("Attempting to install docker-compose-plugin via apt...")
-            try:
-                subprocess.run(["sudo", "apt-get", "update"], check=True)
-                subprocess.run(["sudo", "apt-get", "install", "-y", "docker-compose-plugin"], check=True)
-                # Re-check if compose is now available
-                result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if result.returncode == 0:
-                    click.secho("✅ Docker Compose plugin installed successfully.", fg="green")
-                    return True
-                else:
-                    click.secho("❌ Docker Compose plugin installation failed.", fg="red")
-            except Exception as e:
-                click.secho(f"❌ Failed to install docker-compose-plugin: {e}", fg="red")
-        elif distro in ["fedora", "centos", "rhel", "amzn"] or (distro_like and "fedora" in distro_like):
-            click.echo("Attempting to install docker-compose-plugin via dnf...")
-            try:
-                subprocess.run(["sudo", "dnf", "install", "-y", "docker-compose-plugin"], check=True)
-                result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if result.returncode == 0:
-                    click.secho("✅ Docker Compose plugin installed successfully.", fg="green")
-                    return True
-                else:
-                    click.secho("❌ Docker Compose plugin installation failed.", fg="red")
-            except Exception as e:
-                click.secho(f"❌ Failed to install docker-compose-plugin: {e}", fg="red")
-        elif distro in ["arch", "manjaro"]:
-            click.echo("Attempting to install docker-compose via pacman...")
-            try:
-                subprocess.run(["sudo", "pacman", "-Sy", "docker-compose"], check=True)
-                result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if result.returncode == 0:
-                    click.secho("✅ Docker Compose installed successfully.", fg="green")
-                    return True
-                else:
-                    click.secho("❌ Docker Compose installation failed.", fg="red")
-            except Exception as e:
-                click.secho(f"❌ Failed to install docker-compose: {e}", fg="red")
-        # If not installed, fallback to official script
-        click.secho("Could not install Docker Compose plugin via package manager.", fg="yellow")
-
-    click.secho("🔥 Docker or Docker Compose not found.", fg="yellow")
-    if click.confirm("May I attempt to install them using the official script? (Requires sudo)"):
+    # Offer to install via official Docker script
+    click.secho("🔥 Docker or Docker Compose not found.", fg="red")
+    if click.confirm("May I attempt to install Docker using the official script? (Requires sudo)"):
         try:
             click.echo("Downloading Docker installation script...")
             script_path = "/tmp/get-docker.sh"
@@ -148,21 +93,29 @@ def check_and_install_docker():
             click.echo("Adding current user to the 'docker' group...")
             subprocess.run(["sudo", "usermod", "-aG", "docker", os.getlogin()], check=True)
             click.secho("Please log out and log back in for the group changes to take effect.", fg="yellow")
-            return True
+            # Re-check for docker and compose
+            docker_exists = shutil.which("docker") is not None
+            try:
+                result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                compose_exists = result.returncode == 0
+            except Exception:
+                compose_exists = False
+            if docker_exists and compose_exists:
+                return True
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             click.secho(f"❌ Docker installation failed: {e}", fg="red")
-            return False
-    else:
-        click.echo("Installation cancelled.")
-        return False
 
-def get_platform_config(accelerator: str) -> Dict[str, Any]:
+    click.secho("Please install both Docker and Docker Compose (plugin) manually using your package manager or official instructions, then try again.", fg="yellow")
+    click.secho("See: https://docs.docker.com/engine/install/ and https://docs.docker.com/compose/install/", fg="yellow")
+    return False
+
+def get_platform_config(accelerator: str, gptoss: bool) -> Dict[str, Any]:
     """Returns the docker image and other config for a given platform."""
     # In the future, these images would be hosted on a public registry.
     # For now, they are conceptual names.
     if accelerator == "cuda":
         return {
-            "image": "ghcr.io/wsmlby/homl/server:latest-cuda",
+            "image": "ghcr.io/wsmlby/homl/server:latest-cuda" if not gptoss else "ghcr.io/wsmlby/homl/server:latest-cuda-gptoss",
             "deploy_resources": """
       resources:
         reservations:
@@ -252,7 +205,8 @@ def detect_platform() -> Dict[str, str]:
 @server.command()
 @click.option('--insecure-socket', is_flag=True, help="Use a world-writable socket (less secure).")
 @click.option('--upgrade', is_flag=True, help="Force reinstallation even if the server is already running.")
-def install(insecure_socket: bool, upgrade: bool):
+@click.option('--gptoss', is_flag=True, help="Use the GPTOSS image instead of the default.")
+def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
     """Installs and starts the HoML server using Docker Compose."""
     click.echo("🚀 Starting HoML server installation...")
 
@@ -266,7 +220,7 @@ def install(insecure_socket: bool, upgrade: bool):
     click.echo(f"Detected Platform: {platform.get('accelerator', 'cpu')}")
 
     accelerator = platform.get("accelerator", "cpu")
-    platform_config = get_platform_config(accelerator)
+    platform_config = get_platform_config(accelerator, gptoss)
 
     # 3. Check for platform-specific dependencies
     if accelerator == "cuda":
@@ -445,6 +399,16 @@ def stop(model_name):
 def pull(model_name):
     """Pulls a model from a registry."""
     stub = get_client_stub()
+    if "gptoss" in model_name.lower():
+        # check if running container homl-homl-server-1 is the GPTOSS image, if not, ask the user to use the gptoss flag and reinstall
+        subprocess.run(["docker", "ps", "-f", "name=homl-homl-server-1", "--format", "{{.Image}}"], check=True, capture_output=True)
+        image_name = subprocess.run(["docker", "ps", "-f", "name=homl-homl-server-1", "--format", "{{.Image}}"], check=True, capture_output=True, text=True).stdout.strip()
+        if "gptoss" not in image_name.lower():
+            click.secho("You are trying to pull a GPTOSS model, but the server is not running with the GPTOSS image.", fg="red")
+            click.secho("Please use the --gptoss flag when to reinstall the server with 'homl server install --gptoss'.", fg="yellow")
+            click.secho("GPTOSS support is experimental, if you encounter issues, you can revert by reinstall using 'homl server install'.", fg="yellow")
+            return
+
     # get the Hugging Face token from config
     hf_token = config.get_config_value("hugging_face_token", "")
     if stub:

@@ -96,3 +96,30 @@ jobs:
             -f Dockerfile.cuda \
             . \
             --push
+
+build-cuda-gptoss:
+    name: Build and Publish CUDA Image with GPT-OSS
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout HoML Repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push HoML Server CUDA Image
+        working-directory: ./server
+        run: |
+          docker buildx build \
+            -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cuda-gptoss \
+            -f Dockerfile.cuda-gptoss \
+            . \
+            --push
