@@ -97,7 +97,7 @@ jobs:
             . \
             --push
 
-build-cuda-gptoss:
+  build-cuda-gptoss:
     name: Build and Publish CUDA Image with GPT-OSS
     runs-on: [self-hosted, Linux, X64, nvidia]
     permissions:
