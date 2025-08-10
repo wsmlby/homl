@@ -493,7 +493,7 @@ def create_api_app(model_manager):
                                         data0 = json.loads(chunk[6:].strip())
                                         data0["model"] = model_name
                                         chunk = f"data: {json.dumps(data0)}\n\n"
-                                        logger.info(f"Updated chunk: {chunk}")
+                                        # logger.info(f"Updated chunk: {chunk}")
                                     except json.JSONDecodeError:
                                         pass
                                     

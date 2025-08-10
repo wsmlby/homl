@@ -18,13 +18,8 @@ jobs:
 
     - name: Build binary using manylinux
       run: |
-        docker run --rm -v "${{ github.workspace }}:/work" -w /work/cli 
-        quay.io/pypa/manylinux2014_x86_64 
-        bash -c "
-        export PATH=/opt/python/cp39-cp39/bin:$PATH
-        chmod +x build.sh
-        ./build.sh
-        "
+        docker run --rm -v "${{ github.workspace }}:/work" -w /work/cli \
+        quay.io/pypa/manylinux2014_x86_64 ./build.sh
       shell: bash
 
     - name: Rename binary for release
