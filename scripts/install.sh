@@ -3,12 +3,13 @@
 # Installation script for HoML.
 # This script detects the user's environment, verifies it's a supported
 # platform, and downloads the appropriate pre-built binary from GitHub releases.
+# It finds a writable directory in the user's PATH or uses ~/.local/bin,
+# ensuring the installation does not require root privileges.
 
 set -e
 
 # --- Configuration ---
 GITHUB_REPO="wsmlby/homl"
-INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="homl"
 SUPPORTED_OS="linux"
 SUPPORTED_ARCH="amd64"
@@ -21,6 +22,12 @@ source "$SCRIPT_DIR/detect_env.sh" # This sets the OS and ARCH variables
 echo "Detected Environment:"
 echo "  OS: $OS"
 echo "  Architecture: $ARCH"
+
+# Normalize x86_64 to amd64 for compatibility
+if [ "$ARCH" = "x86_64" ]; then
+    ARCH="amd64"
+    echo "  Normalized Architecture: $ARCH"
+fi
 echo ""
 
 # --- Platform Check ---
@@ -32,6 +39,24 @@ if [ "$OS" != "$SUPPORTED_OS" ] || [ "$ARCH" != "$SUPPORTED_ARCH" ]; then
     echo "Please open an issue on our GitHub repository to request support for your platform:"
     echo "https://github.com/${GITHUB_REPO}/issues"
     exit 1
+fi
+
+# --- Find Installation Directory ---
+INSTALL_DIR=""
+# Find a writable, user-owned directory in PATH
+echo "Searching for a writable directory in your PATH..."
+for dir in $(echo "$PATH" | tr ":" "\n"); do
+    if [ -d "$dir" ] && [ -w "$dir" ] && [ -O "$dir" ]; then
+        INSTALL_DIR="$dir"
+        echo "Found writable directory: $INSTALL_DIR"
+        break
+    fi
+done
+
+# If no suitable directory is found in PATH, default to ~/.local/bin
+if [ -z "$INSTALL_DIR" ]; then
+    echo "No user-writable directory found in PATH. Defaulting to ~/.local/bin."
+    INSTALL_DIR="$HOME/.local/bin"
 fi
 
 # --- Temporary Directory and Cleanup ---
@@ -47,11 +72,13 @@ trap cleanup EXIT
 RELEASE_ASSET_NAME="homl-${OS}-${ARCH}"
 
 # Get the latest release tag from GitHub API
-LATEST_RELEASE=$(curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
+echo "Fetching latest release information from GitHub..."
+LATEST_RELEASE_URL="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+LATEST_RELEASE=$(curl -sL "$LATEST_RELEASE_URL")
 LATEST_TAG=$(echo "$LATEST_RELEASE" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ -z "$LATEST_TAG" ]; then
-    echo "Could not determine the latest release tag. Aborting."
+    echo "Could not determine the latest release tag from $LATEST_RELEASE_URL. Aborting."
     exit 1
 fi
 
@@ -67,7 +94,11 @@ echo "  To:      $INSTALL_DIR/$BINARY_NAME"
 echo ""
 
 # --- Installation ---
-echo "1. Downloading the binary..."
+echo "1. Creating installation directory (if it doesn't exist)..."
+mkdir -p "$INSTALL_DIR"
+
+echo ""
+echo "2. Downloading the binary..."
 if ! curl -L -f -o "$TMP_BINARY_PATH" "$DOWNLOAD_URL"; then
     echo ""
     echo "Error: Download failed."
@@ -76,20 +107,35 @@ if ! curl -L -f -o "$TMP_BINARY_PATH" "$DOWNLOAD_URL"; then
 fi
 
 echo ""
-echo "2. Making it executable..."
+echo "3. Making it executable..."
 chmod +x "$TMP_BINARY_PATH"
 
 echo ""
-echo "3. Moving it to a directory in your PATH (requires sudo)..."
-if [ -w "$INSTALL_DIR" ]; then
-    mv "$TMP_BINARY_PATH" "$INSTALL_DIR/$BINARY_NAME"
+echo "4. Moving it to the installation directory..."
+mv "$TMP_BINARY_PATH" "$INSTALL_DIR/$BINARY_NAME"
+
+echo "---"
+echo "✅ HoML CLI installed successfully to $INSTALL_DIR/$BINARY_NAME"
+echo ""
+
+# --- PATH Check ---
+# If we installed to ~/.local/bin, check if it's in the PATH
+if [[ "$INSTALL_DIR" == "$HOME/.local/bin" ]]; then
+    if [[ ":$PATH:" != *":$INSTALL_DIR":* ]]; then
+        echo "⚠️  IMPORTANT:"
+        echo "The directory $INSTALL_DIR is not in your PATH."
+        echo "To use the 'homl' command directly, you need to add it."
+        echo ""
+        echo "Please add the following line to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc, or ~/.profile):"
+        echo "export PATH=\"$INSTALL_DIR:$PATH\""
+        echo ""
+        echo "After adding it, restart your shell or run 'source <your_shell_file>' to apply the changes."
+    else
+        echo "The 'homl' command is now available in your shell."
+    fi
 else
-    echo "Sudo privileges are required to move the binary to $INSTALL_DIR."
-    sudo mv "$TMP_BINARY_PATH" "$INSTALL_DIR/$BINARY_NAME"
+    echo "The 'homl' command should be available in your shell, as it was installed in a directory in your PATH."
 fi
 
-echo "---"
-echo "✅ HoML CLI installed successfully!"
-echo "You can now use the 'homl' command."
-echo "---"
 
+echo "---"
