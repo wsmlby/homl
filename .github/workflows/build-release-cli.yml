@@ -9,6 +9,8 @@ jobs:
   build-and-release:
     name: Build and Release for Linux x64
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Check out code
