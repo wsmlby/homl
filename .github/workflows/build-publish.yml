@@ -63,7 +63,9 @@ jobs:
       - name: Build and Push HoML Server CPU Image
         working-directory: ./server
         run: |
+          VERSION=${GITHUB_REF##*/}
           docker buildx build \
+            --build-arg HOML_SERVER_VERSION=$VERSION \
             -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cpu \
             -f Dockerfile.cpu.app \
             . \
@@ -91,7 +93,9 @@ jobs:
       - name: Build and Push HoML Server CUDA Image
         working-directory: ./server
         run: |
+          VERSION=${GITHUB_REF##*/}
           docker buildx build \
+            --build-arg HOML_SERVER_VERSION=$VERSION \
             -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cuda \
             -f Dockerfile.cuda \
             . \
@@ -118,7 +122,9 @@ jobs:
       - name: Build and Push HoML Server CUDA Image
         working-directory: ./server
         run: |
+          VERSION=${GITHUB_REF##*/}
           docker buildx build \
+            --build-arg HOML_SERVER_VERSION=$VERSION \
             -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cuda-gptoss \
             -f Dockerfile.cuda-gptoss \
             . \

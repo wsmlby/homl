@@ -60,6 +60,11 @@ class DaemonStub(object):
                 request_serializer=daemon__pb2.ListLocalModelsRequest.SerializeToString,
                 response_deserializer=daemon__pb2.ListLocalModelsResponse.FromString,
                 _registered_method=True)
+        self.Version = channel.unary_unary(
+                '/homl.Daemon/Version',
+                request_serializer=daemon__pb2.VersionRequest.SerializeToString,
+                response_deserializer=daemon__pb2.VersionResponse.FromString,
+                _registered_method=True)
 
 
 class DaemonServicer(object):
@@ -101,6 +106,12 @@ class DaemonServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Version(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DaemonServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -128,6 +139,11 @@ def add_DaemonServicer_to_server(servicer, server):
                     servicer.ListLocalModels,
                     request_deserializer=daemon__pb2.ListLocalModelsRequest.FromString,
                     response_serializer=daemon__pb2.ListLocalModelsResponse.SerializeToString,
+            ),
+            'Version': grpc.unary_unary_rpc_method_handler(
+                    servicer.Version,
+                    request_deserializer=daemon__pb2.VersionRequest.FromString,
+                    response_serializer=daemon__pb2.VersionResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -266,6 +282,33 @@ class Daemon(object):
             '/homl.Daemon/ListLocalModels',
             daemon__pb2.ListLocalModelsRequest.SerializeToString,
             daemon__pb2.ListLocalModelsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Version(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/homl.Daemon/Version',
+            daemon__pb2.VersionRequest.SerializeToString,
+            daemon__pb2.VersionResponse.FromString,
             options,
             channel_credentials,
             insecure,

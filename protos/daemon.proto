@@ -22,9 +22,18 @@ service Daemon {
 
   // Lists locally available models.
   rpc ListLocalModels (ListLocalModelsRequest) returns (ListLocalModelsResponse) {}
+
+  rpc Version (VersionRequest) returns (VersionResponse) {}
 }
 
+
+
 // --- Messages ---
+message VersionRequest {
+}
+message VersionResponse {
+  string version = 1;
+}
 
 message PullModelRequest {
   string model_name = 1;

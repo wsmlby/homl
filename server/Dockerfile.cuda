@@ -21,6 +21,8 @@ COPY ./homl_server ./homl_server
 WORKDIR /app/homl_server
 # The base image exposes port 8000, so we don't need to do it again.
 # EXPOSE 8000
+ARG HOML_SERVER_VERSION=dev
+ENV HOML_SERVER_VERSION=$HOML_SERVER_VERSION
 
 # We overwrite the base image's entrypoint to run our custom Ray Serve
 # application, which provides dynamic model management.

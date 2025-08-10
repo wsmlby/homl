@@ -24,41 +24,45 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x64\x61\x65mon.proto\x12\x04homl\"8\n\x10PullModelRequest\x12\x12\n\nmodel_name\x18\x01 \x01(\t\x12\x10\n\x08hf_token\x18\x02 \x01(\t\"5\n\x11PullModelResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"T\n\x11PullModelProgress\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07percent\x18\x02 \x01(\x05\x12\x0c\n\x04\x64one\x18\x03 \x01(\x08\x12\x0f\n\x07success\x18\x04 \x01(\x08\"\'\n\x11StartModelRequest\x12\x12\n\nmodel_name\x18\x01 \x01(\t\"2\n\x12StartModelResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0b\n\x03pid\x18\x02 \x01(\r\"&\n\x10StopModelRequest\x12\x12\n\nmodel_name\x18\x01 \x01(\t\"$\n\x11StopModelResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x1a\n\x18ListRunningModelsRequest\".\n\x08VRAMInfo\x12\x11\n\tdevice_id\x18\x01 \x01(\x05\x12\x0f\n\x07vram_mb\x18\x02 \x01(\x05\"s\n\x0cRunningModel\x12\x12\n\nmodel_name\x18\x01 \x01(\t\x12\x0b\n\x03pid\x18\x02 \x01(\r\x12\x0e\n\x06status\x18\x03 \x01(\t\x12\x0e\n\x06ram_mb\x18\x04 \x01(\x05\x12\"\n\nvram_usage\x18\x05 \x03(\x0b\x32\x0e.homl.VRAMInfo\"y\n\x19ListRunningModelsResponse\x12\"\n\x06models\x18\x01 \x03(\x0b\x32\x12.homl.RunningModel\x12\x14\n\x0ctotal_ram_mb\x18\x02 \x01(\x05\x12\"\n\nvram_total\x18\x03 \x03(\x0b\x32\x0e.homl.VRAMInfo\"+\n\x16ListLocalModelsRequest\x12\x11\n\twith_size\x18\x01 \x01(\x08\"B\n\x0eLocalModelInfo\x12\r\n\x05model\x18\x01 \x01(\t\x12\x10\n\x08model_id\x18\x02 \x01(\t\x12\x0f\n\x07size_mb\x18\x03 \x01(\x05\"?\n\x17ListLocalModelsResponse\x12$\n\x06models\x18\x01 \x03(\x0b\x32\x14.homl.LocalModelInfo2\xf7\x02\n\x06\x44\x61\x65mon\x12\x41\n\nStartModel\x12\x17.homl.StartModelRequest\x1a\x18.homl.StartModelResponse\"\x00\x12>\n\tStopModel\x12\x16.homl.StopModelRequest\x1a\x17.homl.StopModelResponse\"\x00\x12V\n\x11ListRunningModels\x12\x1e.homl.ListRunningModelsRequest\x1a\x1f.homl.ListRunningModelsResponse\"\x00\x12@\n\tPullModel\x12\x16.homl.PullModelRequest\x1a\x17.homl.PullModelProgress\"\x00\x30\x01\x12P\n\x0fListLocalModels\x12\x1c.homl.ListLocalModelsRequest\x1a\x1d.homl.ListLocalModelsResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x64\x61\x65mon.proto\x12\x04homl\"\x10\n\x0eVersionRequest\"\"\n\x0fVersionResponse\x12\x0f\n\x07version\x18\x01 \x01(\t\"8\n\x10PullModelRequest\x12\x12\n\nmodel_name\x18\x01 \x01(\t\x12\x10\n\x08hf_token\x18\x02 \x01(\t\"5\n\x11PullModelResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"T\n\x11PullModelProgress\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07percent\x18\x02 \x01(\x05\x12\x0c\n\x04\x64one\x18\x03 \x01(\x08\x12\x0f\n\x07success\x18\x04 \x01(\x08\"\'\n\x11StartModelRequest\x12\x12\n\nmodel_name\x18\x01 \x01(\t\"2\n\x12StartModelResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0b\n\x03pid\x18\x02 \x01(\r\"&\n\x10StopModelRequest\x12\x12\n\nmodel_name\x18\x01 \x01(\t\"$\n\x11StopModelResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x1a\n\x18ListRunningModelsRequest\".\n\x08VRAMInfo\x12\x11\n\tdevice_id\x18\x01 \x01(\x05\x12\x0f\n\x07vram_mb\x18\x02 \x01(\x05\"s\n\x0cRunningModel\x12\x12\n\nmodel_name\x18\x01 \x01(\t\x12\x0b\n\x03pid\x18\x02 \x01(\r\x12\x0e\n\x06status\x18\x03 \x01(\t\x12\x0e\n\x06ram_mb\x18\x04 \x01(\x05\x12\"\n\nvram_usage\x18\x05 \x03(\x0b\x32\x0e.homl.VRAMInfo\"y\n\x19ListRunningModelsResponse\x12\"\n\x06models\x18\x01 \x03(\x0b\x32\x12.homl.RunningModel\x12\x14\n\x0ctotal_ram_mb\x18\x02 \x01(\x05\x12\"\n\nvram_total\x18\x03 \x03(\x0b\x32\x0e.homl.VRAMInfo\"+\n\x16ListLocalModelsRequest\x12\x11\n\twith_size\x18\x01 \x01(\x08\"B\n\x0eLocalModelInfo\x12\r\n\x05model\x18\x01 \x01(\t\x12\x10\n\x08model_id\x18\x02 \x01(\t\x12\x0f\n\x07size_mb\x18\x03 \x01(\x05\"?\n\x17ListLocalModelsResponse\x12$\n\x06models\x18\x01 \x03(\x0b\x32\x14.homl.LocalModelInfo2\xb1\x03\n\x06\x44\x61\x65mon\x12\x41\n\nStartModel\x12\x17.homl.StartModelRequest\x1a\x18.homl.StartModelResponse\"\x00\x12>\n\tStopModel\x12\x16.homl.StopModelRequest\x1a\x17.homl.StopModelResponse\"\x00\x12V\n\x11ListRunningModels\x12\x1e.homl.ListRunningModelsRequest\x1a\x1f.homl.ListRunningModelsResponse\"\x00\x12@\n\tPullModel\x12\x16.homl.PullModelRequest\x1a\x17.homl.PullModelProgress\"\x00\x30\x01\x12P\n\x0fListLocalModels\x12\x1c.homl.ListLocalModelsRequest\x1a\x1d.homl.ListLocalModelsResponse\"\x00\x12\x38\n\x07Version\x12\x14.homl.VersionRequest\x1a\x15.homl.VersionResponse\"\x00\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'daemon_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_PULLMODELREQUEST']._serialized_start=22
-  _globals['_PULLMODELREQUEST']._serialized_end=78
-  _globals['_PULLMODELRESPONSE']._serialized_start=80
-  _globals['_PULLMODELRESPONSE']._serialized_end=133
-  _globals['_PULLMODELPROGRESS']._serialized_start=135
-  _globals['_PULLMODELPROGRESS']._serialized_end=219
-  _globals['_STARTMODELREQUEST']._serialized_start=221
-  _globals['_STARTMODELREQUEST']._serialized_end=260
-  _globals['_STARTMODELRESPONSE']._serialized_start=262
-  _globals['_STARTMODELRESPONSE']._serialized_end=312
-  _globals['_STOPMODELREQUEST']._serialized_start=314
-  _globals['_STOPMODELREQUEST']._serialized_end=352
-  _globals['_STOPMODELRESPONSE']._serialized_start=354
-  _globals['_STOPMODELRESPONSE']._serialized_end=390
-  _globals['_LISTRUNNINGMODELSREQUEST']._serialized_start=392
-  _globals['_LISTRUNNINGMODELSREQUEST']._serialized_end=418
-  _globals['_VRAMINFO']._serialized_start=420
-  _globals['_VRAMINFO']._serialized_end=466
-  _globals['_RUNNINGMODEL']._serialized_start=468
-  _globals['_RUNNINGMODEL']._serialized_end=583
-  _globals['_LISTRUNNINGMODELSRESPONSE']._serialized_start=585
-  _globals['_LISTRUNNINGMODELSRESPONSE']._serialized_end=706
-  _globals['_LISTLOCALMODELSREQUEST']._serialized_start=708
-  _globals['_LISTLOCALMODELSREQUEST']._serialized_end=751
-  _globals['_LOCALMODELINFO']._serialized_start=753
-  _globals['_LOCALMODELINFO']._serialized_end=819
-  _globals['_LISTLOCALMODELSRESPONSE']._serialized_start=821
-  _globals['_LISTLOCALMODELSRESPONSE']._serialized_end=884
-  _globals['_DAEMON']._serialized_start=887
-  _globals['_DAEMON']._serialized_end=1262
+  _globals['_VERSIONREQUEST']._serialized_start=22
+  _globals['_VERSIONREQUEST']._serialized_end=38
+  _globals['_VERSIONRESPONSE']._serialized_start=40
+  _globals['_VERSIONRESPONSE']._serialized_end=74
+  _globals['_PULLMODELREQUEST']._serialized_start=76
+  _globals['_PULLMODELREQUEST']._serialized_end=132
+  _globals['_PULLMODELRESPONSE']._serialized_start=134
+  _globals['_PULLMODELRESPONSE']._serialized_end=187
+  _globals['_PULLMODELPROGRESS']._serialized_start=189
+  _globals['_PULLMODELPROGRESS']._serialized_end=273
+  _globals['_STARTMODELREQUEST']._serialized_start=275
+  _globals['_STARTMODELREQUEST']._serialized_end=314
+  _globals['_STARTMODELRESPONSE']._serialized_start=316
+  _globals['_STARTMODELRESPONSE']._serialized_end=366
+  _globals['_STOPMODELREQUEST']._serialized_start=368
+  _globals['_STOPMODELREQUEST']._serialized_end=406
+  _globals['_STOPMODELRESPONSE']._serialized_start=408
+  _globals['_STOPMODELRESPONSE']._serialized_end=444
+  _globals['_LISTRUNNINGMODELSREQUEST']._serialized_start=446
+  _globals['_LISTRUNNINGMODELSREQUEST']._serialized_end=472
+  _globals['_VRAMINFO']._serialized_start=474
+  _globals['_VRAMINFO']._serialized_end=520
+  _globals['_RUNNINGMODEL']._serialized_start=522
+  _globals['_RUNNINGMODEL']._serialized_end=637
+  _globals['_LISTRUNNINGMODELSRESPONSE']._serialized_start=639
+  _globals['_LISTRUNNINGMODELSRESPONSE']._serialized_end=760
+  _globals['_LISTLOCALMODELSREQUEST']._serialized_start=762
+  _globals['_LISTLOCALMODELSREQUEST']._serialized_end=805
+  _globals['_LOCALMODELINFO']._serialized_start=807
+  _globals['_LOCALMODELINFO']._serialized_end=873
+  _globals['_LISTLOCALMODELSRESPONSE']._serialized_start=875
+  _globals['_LISTLOCALMODELSRESPONSE']._serialized_end=938
+  _globals['_DAEMON']._serialized_start=941
+  _globals['_DAEMON']._serialized_end=1374
 # @@protoc_insertion_point(module_scope)

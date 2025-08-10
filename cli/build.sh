@@ -22,11 +22,17 @@ ENTRY_POINT="homl_cli/main.py"
 DATA_FILE="homl_cli/docker-compose.yml.template"
 # The binary will be named 'homl'
 BINARY_NAME="homl"
+if [ -z "$CLI_VERSION" ]; then
+    # If CLI_VERSION is not set, default to 'dev'
+    CLI_VERSION="dev"
+fi
+echo "$CLI_VERSION" > homl_cli/__version.txt
 
 pyinstaller \
     --name "$BINARY_NAME" \
     --onefile \
     --console \
+    --add-data "homl_cli/__version.txt:." \
     --add-data "$DATA_FILE:." \
     "$ENTRY_POINT"
 

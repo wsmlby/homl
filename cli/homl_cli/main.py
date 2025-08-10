@@ -63,6 +63,26 @@ def auth():
 main.add_command(auth)
 main.add_command(server)
 
+@main.command()
+def version():
+    """Show CLI and server version."""
+    version_file = get_resource_path("__version.txt")
+    cli_version = "dev"
+    if version_file.exists():
+        with open(version_file, 'r') as f:
+            cli_version = f.read().strip()
+    click.echo(f"HoML CLI version: {cli_version}")
+    # Try to get server version via gRPC
+    stub = get_client_stub()
+    if stub:
+        try:
+            resp = stub.Version(daemon_pb2.VersionRequest())
+            click.echo(f"HoML Server version: {resp.version}")
+        except Exception:
+            click.echo("HoML Server version: unavailable (gRPC error)")
+    else:
+        click.echo("HoML Server version: unavailable (daemon not running)")
+
 def check_and_install_docker():
     """Checks for Docker and Docker Compose and asks to install if missing."""
     # Check for 'docker' and 'docker compose' (not 'docker-compose')
@@ -305,6 +325,7 @@ def run(model_name):
     """Starts a model with the vLLM server."""
     stub = get_client_stub()
     if stub:
+        click.echo(f"Starting model '{model_name}' (vLLM is a bit slow to start)...")
         response = stub.StartModel(daemon_pb2.StartModelRequest(model_name=model_name))
         click.echo(response.message)
 

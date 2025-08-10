@@ -19,6 +19,8 @@ RUN pip install -r requirements.txt
 # Copy our application source code
 COPY ./homl_server ./
 
+ARG HOML_SERVER_VERSION=dev
+ENV HOML_SERVER_VERSION=$HOML_SERVER_VERSION
 
 # Start the server directly from main.py
 CMD ["python3", "-u", "main.py"]

@@ -22,14 +22,19 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Model manager stub
+
+# Server version (set at build time or fallback to dev)
+SERVER_VERSION = os.environ.get("HOML_SERVER_VERSION", "dev")
 
 import subprocess
 import random
 MODEL_HOME = os.environ.get("HOML_MODEL_HOME", "/models")
 MODEL_LIB = os.path.join(MODEL_HOME, "lib")
 TORCH_CACHE = os.path.join(MODEL_LIB, "torch_cache")
-MODEL_LOAD_TIMEOUT = int(os.environ.get("HOML_MODEL_LOAD_TIMEOUT", 120))  # seconds
+MODEL_LOAD_TIMEOUT = int(os.environ.get("HOML_MODEL_LOAD_TIMEOUT", 180))  # seconds
+# # This is the time after which a model will be unloaded if it is idle
+MODEL_UNLOAD_IDLE_TIME = int(os.environ.get("HOML_MODEL_UNLOAD_IDLE_TIME", 600))  # 10 minutes default
+
 os.makedirs(os.path.join(MODEL_HOME, "home"), exist_ok=True)
 os.makedirs(MODEL_LIB, exist_ok=True)
 os.makedirs(TORCH_CACHE, exist_ok=True)
@@ -109,10 +114,30 @@ class ModelManager:
 
     def __init__(self):
         self.running_models = {}  # model_name: {pid, port, process, status}
-        # self.local_models = set()
         self.model_ports = {}  # model_name: port
         self.used_ports = set()
-        # self._scan_local_models()
+        self.last_access = {}  # model_name: last access timestamp
+        self.lock = threading.Lock()
+        self._start_idle_unload_thread()
+
+    def _start_idle_unload_thread(self):
+        def idle_unload_loop():
+            while True:
+                now = time.time()
+                models_to_unload = []
+                with self.lock:
+                    for model_id in list(self.running_models.keys()):
+                        last = self.last_access.get(model_id, now)
+                        if now - last > MODEL_UNLOAD_IDLE_TIME:
+                            logger.info(f"Unloading idle model {model_id} after {now - last:.1f}s of inactivity")
+                            models_to_unload.append(model_id)
+                # Do it outside the lock to avoid deadlocks
+                for model_id in models_to_unload:
+                    self.stop_model(model_id)
+                    self.last_access.pop(model_id, None)
+                time.sleep(10)
+        t = threading.Thread(target=idle_unload_loop, daemon=True)
+        t.start()
 
     # def _scan_local_models(self):
     #     # Scan cache dir for models
@@ -149,7 +174,9 @@ class ModelManager:
         _, model_id, model_path = self.is_local(model_name)
         if not model_path:
             return False, "Model not available locally", None, None
+        
         if self.is_running(model_id):
+            self.last_access[model_id] = time.time()
             return True, "Model already running", self.get_port(model_id), self.running_models[model_id]["pid"]
         # if there is model running that is not this model, stop it
         # TODO: enable multiple models running at the same time
@@ -158,47 +185,46 @@ class ModelManager:
                 if running_model_id != model_id and self.is_running(running_model_id):
                     logger.info(f"Stopping running model {running_model_id} before starting {model_id}")
                     self.stop_model(running_model_id)
-        
-        port = self._find_free_port()
-        # Example vLLM server start command (update as needed)
-        # This assumes vllm entrypoint is available in PATH
-        local_dir = os.path.join(MODEL_LIB, model_path)
-        cmd = [
-            "python3", "-m", "vllm.entrypoints.openai.api_server",
-            "--model", local_dir,
-            "--port", str(port)
-        ]
-        logger.info(f"Starting model {model_id} on port {port} with command: {' '.join(cmd)}")
-        env = os.environ.copy()
-
-        # gpt-oss need attention 3 by default which is not available for most GPUs
-        if "gpt-oss" in model_id:
-            env["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
-        try:
-            proc = subprocess.Popen(cmd, env=env)
-            self.running_models[model_id] = {
-                "pid": proc.pid,
-                "port": port,
-                "process": proc,
-                "status": "running"
-            }
-            self.model_ports[model_id] = port
-            self.used_ports.add(port)
-            return True, f"Model started on port {port}", port, proc.pid
-        except Exception as e:
-            return False, f"Failed to start model: {str(e)}", None, None
+        with self.lock:
+            port = self._find_free_port()
+            local_dir = os.path.join(MODEL_LIB, model_path)
+            cmd = [
+                "python3", "-m", "vllm.entrypoints.openai.api_server",
+                "--model", local_dir,
+                "--port", str(port)
+            ]
+            logger.info(f"Starting model {model_id} on port {port} with command: {' '.join(cmd)}")
+            env = os.environ.copy()
+            if "gpt-oss" in model_id:
+                env["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
+            try:
+                proc = subprocess.Popen(cmd, env=env)
+                self.running_models[model_id] = {
+                    "pid": proc.pid,
+                    "port": port,
+                    "process": proc,
+                    "status": "running"
+                }
+                self.model_ports[model_id] = port
+                self.used_ports.add(port)
+                self.last_access[model_id] = time.time()
+                return True, f"Model started on port {port}", port, proc.pid
+            except Exception as e:
+                return False, f"Failed to start model: {str(e)}", None, None
 
     def stop_model(self, model_name):
         _, model_id, _ = self.is_local(model_name)
-        if model_id in self.running_models:
-            proc = self.running_models[model_id]["process"]
-            proc.terminate()
-            port = self.running_models[model_id]["port"]
-            self.used_ports.discard(port)
-            del self.running_models[model_id]
-            self.model_ports.pop(model_id, None)
-            return True, "Model stopped"
-        return False, "Model not running"
+        with self.lock:
+            if model_id in self.running_models:
+                proc = self.running_models[model_id]["process"]
+                proc.terminate()
+                port = self.running_models[model_id]["port"]
+                self.used_ports.discard(port)
+                del self.running_models[model_id]
+                self.model_ports.pop(model_id, None)
+                self.last_access.pop(model_id, None)
+                return True, "Model stopped"
+            return False, "Model not running"
     def get_rammb(self, pid):
         """Get RAM usage in MB for a given process ID."""
         try:
@@ -363,6 +389,8 @@ class ModelManager:
 
 # gRPC Servicer
 class DaemonServicer(daemon_pb2_grpc.DaemonServicer):
+    def Version(self, request, context):
+        return daemon_pb2.VersionResponse(version=SERVER_VERSION)
     def ListLocalModels(self, request, context):
         logger.info("Listing local models")
         models = self.model_manager.list_local(request.with_size)
@@ -463,6 +491,8 @@ def create_api_app(model_manager):
         if not model_id:
             raise HTTPException(status_code=400, detail="Missing model name")
         logger.info(f"Checking if model {model_id} is running")
+        # Update last access time for model
+        model_manager.last_access[model_id] = time.time()
         if not model_manager.is_running(model_id):
             logger.info(f"Model {model_id} is not running, starting it")
             if local:
@@ -473,7 +503,6 @@ def create_api_app(model_manager):
             else:
                 raise HTTPException(status_code=404, detail="Model not available locally")
         port = model_manager.get_port(model_id)
-        
         logger.info(f"Model {model_id} is running on port {port}")
         if model_manager.wait_for_model(port):
             logger.info(f"Model {model_id} is ready on port {port}")
@@ -493,10 +522,9 @@ def create_api_app(model_manager):
                                         data0 = json.loads(chunk[6:].strip())
                                         data0["model"] = model_name
                                         chunk = f"data: {json.dumps(data0)}\n\n"
-                                        # logger.info(f"Updated chunk: {chunk}")
+                                        model_manager.last_access[model_id] = time.time()
                                     except json.JSONDecodeError:
                                         pass
-                                    
                                 yield chunk
                 return StreamingResponse(generate_chunks(), media_type="text/event-stream")
             else:
