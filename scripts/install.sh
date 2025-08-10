@@ -15,20 +15,38 @@ SUPPORTED_OS="linux"
 SUPPORTED_ARCH="amd64"
 
 # --- Environment Detection ---
-# Get the directory of this script to source the detection helper
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-source "$SCRIPT_DIR/detect_env.sh" # This sets the OS and ARCH variables
+OS=""
+ARCH=""
 
-echo "Detected Environment:"
+echo "Detecting your OS and architecture..."
+
+# Detect OS using uname
+case "$(uname -s)" in
+    Linux*)
+        OS='linux'
+        ;;
+    *)
+        OS='unsupported'
+        ;;
+esac
+
+# Detect architecture using uname
+case "$(uname -m)" in
+    x86_64)
+        ARCH='amd64'
+        ;;
+    aarch64 | arm64)
+        ARCH='arm64'
+        ;;
+    *)
+        ARCH='unsupported'
+        ;;
+esac
+
 echo "  OS: $OS"
 echo "  Architecture: $ARCH"
-
-# Normalize x86_64 to amd64 for compatibility
-if [ "$ARCH" = "x86_64" ]; then
-    ARCH="amd64"
-    echo "  Normalized Architecture: $ARCH"
-fi
 echo ""
+
 
 # --- Platform Check ---
 if [ "$OS" != "$SUPPORTED_OS" ] || [ "$ARCH" != "$SUPPORTED_ARCH" ]; then

@@ -65,7 +65,15 @@ main.add_command(server)
 
 def check_and_install_docker():
     """Checks for Docker and Docker Compose and asks to install if missing."""
-    if shutil.which("docker") and shutil.which("docker-compose"):
+    # Check for 'docker' and 'docker compose' (not 'docker-compose')
+    docker_exists = shutil.which("docker") is not None
+    # Check if 'docker compose' is available
+    try:
+        result = subprocess.run(["docker", "compose", "version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        compose_exists = result.returncode == 0
+    except Exception:
+        compose_exists = False
+    if docker_exists and compose_exists:
         return True
 
     click.secho("🔥 Docker or Docker Compose not found.", fg="yellow")
@@ -251,7 +259,7 @@ def install(insecure_socket: bool, upgrade: bool):
     click.echo(f"📝 Wrote docker-compose configuration to {compose_path}")
 
 
-    # 7. Run docker-compose up
+    # 7. Run docker compose up
     click.echo("🐳 Starting server with Docker Compose... (This may take a moment)")
 
     def print_post_install_message():
@@ -269,11 +277,11 @@ def install(insecure_socket: bool, upgrade: bool):
         subprocess.run(["docker", "compose", "-f", str(compose_path), "up", "-d"], check=True)
         print_post_install_message()
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        click.echo("Could not run 'docker-compose' directly. Trying with 'sudo'.")
+        click.echo("Could not run 'docker compose' directly. Trying with 'sudo'.")
         try:
             if upgrade:
-                subprocess.run(["sudo", "docker-compose", "-f", str(compose_path), "pull"], check=True)
-            subprocess.run(["sudo", "docker-compose", "-f", str(compose_path), "up", "-d"], check=True)
+                subprocess.run(["sudo", "docker", "compose", "-f", str(compose_path), "pull"], check=True)
+            subprocess.run(["sudo", "docker", "compose", "-f", str(compose_path), "up", "-d"], check=True)
             print_post_install_message()
         except Exception as sudo_e:
             click.secho(f"❌ Failed to start server with sudo: {sudo_e}", fg="red")
