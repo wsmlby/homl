@@ -21,7 +21,7 @@ HoML brings the best of both worlds together, offering:
 *   **One-Line Installation:** A simple, one-line script for easy installation and upgrades across a wide range of machines.
 *   **Simple CLI:** An intuitive command-line interface for managing and running models.
 *   **Easy Model Management:** A `pull` command to download models from the Hugging Face Hub.
-*   **Automatic Model Loading/Unloading:** Models are loaded and unloaded from memory as needed, with an option to disable this feature.
+*   **Automatic GPU Memory Management:** HoML intelligently manages your GPU memory. Models are automatically loaded when requested via the OpenAI-compatible API and unloaded when another model is requested. To free up resources for other applications, models are also automatically unloaded after a configurable idle period (defaulting to 10 minutes).
 *   **Interactive Chat:** A `run` command to start an interactive chat session with a model.
 *   **OpenAI-Compatible API:** A built-in server that exposes an OpenAI-compatible API for seamless integration with existing tools.
 *   **Curated Model List:** A website and a curated list of tested and verified models, with clear version compatibility.
