@@ -7,14 +7,14 @@ The HoML server is designed to be run as a Docker container. It provides an Open
 The server container is intended to be managed directly by the `homl` command-line tool. To install and run the server, please use the following command:
 
 ```bash
-homl install
+homl server install
 ```
 
 This command will handle the creation of a `docker-compose.yml` file, configure the necessary volumes for the model cache and gRPC socket, and start the server.
 
 ### Advanced Configuration
 
-For advanced users who wish to manage the server manually, the `homl install` command generates a `docker-compose.yml` file in `~/.homl/`. This file can be inspected and modified to suit your needs.
+For advanced users who wish to manage the server manually, the `homl server install` command generates a `docker-compose.yml` file in `~/.homl/`. This file can be inspected and modified to suit your needs.
 
 Key configuration points managed by the installer include:
 -   **User Permissions:** The container is run with the host user's UID/GID to ensure correct ownership of the socket and cache files.

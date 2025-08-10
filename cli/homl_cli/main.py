@@ -40,7 +40,7 @@ def get_client_stub():
         return daemon_pb2_grpc.DaemonStub(channel)
     except grpc.FutureTimeoutError:
         click.echo("Error: The HoML daemon is not running.")
-        click.echo("Please make sure the server is installed and running, e.g. with 'homl install'.")
+        click.echo("Please make sure the server is installed and running, e.g. with 'homl server install'.")
         return None
 
 @click.group()
