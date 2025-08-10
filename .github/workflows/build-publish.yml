@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-cpu:
-    name: Build and Publish CPU Image
+  build-base-cpu:
+    name: Build and Publish VLLM CPU Base Image (Manual)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,7 +33,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push vLLM CPU Base Image
-        id: build_base
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/homl-vllm-cpu-base:latest
           docker buildx build \
@@ -40,17 +40,35 @@ jobs:
             -f server/Dockerfile.cpu \
             ./vllm-src \
             --push
-          echo "image_id=${IMAGE_ID}" >> $GITHUB_OUTPUT
+
+  build-server-cpu:
+    name: Build and Publish HoML Server CPU Image (On Tag)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout HoML Repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push HoML Server CPU Image
         working-directory: ./server
         run: |
           docker buildx build \
-            --build-arg BASE_IMAGE=${{ steps.build_base.outputs.image_id }} \
             -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cpu \
             -f Dockerfile.cpu.app \
             . \
             --push
+
 
   build-cuda:
     name: Build and Publish CUDA Image

@@ -1,7 +1,6 @@
 # This Dockerfile builds the final HoML Server image for CPU.
 # It layers the HoML server code on top of a pre-built vLLM CPU base image.
-ARG BASE_IMAGE=homl/vllm-cpu:latest
-FROM ${BASE_IMAGE}
+FROM ghcr.io/wsmlby/homl-vllm-cpu-base:latest
 
 
 # Set the working directory to homl_server
