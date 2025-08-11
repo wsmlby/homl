@@ -362,22 +362,6 @@ class _LazyRegisteredModel(_BaseRegisteredModel):
 
     # Performed in another process to avoid initializing CUDA
     def inspect_model_cls(self) -> _ModelInfo:
-        LAZY_LOAD_MODULE_INFO_CACHE_PATH = os.environ.get("VLLM_LAZY_LOAD_MODULE_INFO_CACHE", "")
-        if LAZY_LOAD_MODULE_INFO_CACHE_PATH:
-            # Use cache to avoid reloading the model class
-            cache_file = os.path.join(
-                LAZY_LOAD_MODULE_INFO_CACHE_PATH,
-                f"{self.module_name.replace('.', '_')}_{self.class_name}.pkl"
-            )
-            if os.path.exists(cache_file):
-                with open(cache_file, "rb") as f:
-                    return pickle.load(f)
-            else:
-                info = _run_in_subprocess(
-                    lambda: _ModelInfo.from_model_cls(self.load_model_cls()))
-                with open(cache_file, "wb") as f:
-                    pickle.dump(info, f)
-                return info
         return _run_in_subprocess(
             lambda: _ModelInfo.from_model_cls(self.load_model_cls()))
 

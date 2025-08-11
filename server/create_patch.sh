@@ -1,0 +1,2 @@
+diff -u vllm_origin/entrypoints/openai/api_server.py vllm_patched/entrypoints/openai/api_server.py > vllm_patches/api_server.patch
+diff -u vllm_origin/model_executor/models/registry.py vllm_patched/model_executor/models/registry.py > vllm_patches/registry.patch

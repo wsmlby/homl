@@ -1,0 +1,10 @@
+--- vllm_origin/entrypoints/openai/api_server.py	2025-08-10 22:01:52.198769630 -0700
++++ vllm_patched/entrypoints/openai/api_server.py	2025-08-11 00:12:50.604804336 -0700
+@@ -280,6 +280,7 @@
+                                engine_pid)
+         mq_engine_client = await asyncio.get_running_loop().run_in_executor(
+             None, build_client)
++        mq_engine_client.engine_proc = engine_process
+         try:
+             while True:
+                 try:
