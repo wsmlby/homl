@@ -36,11 +36,14 @@ TORCH_CACHE = os.path.join(MODEL_LIB, "torch_cache")
 MODEL_LOAD_TIMEOUT = int(os.environ.get("HOML_MODEL_LOAD_TIMEOUT", 180))  # seconds
 # # This is the time after which a model will be unloaded if it is idle
 MODEL_UNLOAD_IDLE_TIME = int(os.environ.get("HOML_MODEL_UNLOAD_IDLE_TIME", 600))  # 10 minutes default
+module_info_cache = os.path.join(MODEL_HOME, "module_info_cache")
 
 os.makedirs(os.path.join(MODEL_HOME, "home"), exist_ok=True)
 os.makedirs(MODEL_LIB, exist_ok=True)
 os.makedirs(TORCH_CACHE, exist_ok=True)
+os.makedirs(module_info_cache, exist_ok=True)
 os.environ["TORCHINDUCTOR_CACHE_DIR"] = TORCH_CACHE
+os.environ["VLLM_LAZY_LOAD_MODULE_INFO_CACHE"] = module_info_cache
 # Ensure cache and lib directories exist
 
 

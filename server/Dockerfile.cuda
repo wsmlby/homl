@@ -17,6 +17,7 @@ RUN pip install -r requirements.txt
 # RUN pip install .
 ENV ACCELERATOR=CUDA
 # Copy our application source code
+COPY vllm_patched /usr/local/lib/python3.12/dist-packages/vllm
 COPY ./homl_server ./homl_server
 WORKDIR /app/homl_server
 # The base image exposes port 8000, so we don't need to do it again.
