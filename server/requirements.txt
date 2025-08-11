@@ -4,3 +4,5 @@ fastapi
 uvicorn
 httpx
 huggingface_hub
+vllm
+cloudpickle

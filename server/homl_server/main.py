@@ -4,7 +4,7 @@ import hashlib
 import json
 import multiprocessing
 import os
-import pickle
+import cloudpickle as pickle
 import sys
 import threading
 import time
@@ -13,8 +13,9 @@ from pathlib import Path
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.multiprocessing.client import MQLLMEngineClient
 from vllm.engine.multiprocessing.engine import run_mp_engine
+from vllm.sampling_params import SamplingParams
 from vllm.usage.usage_lib import UsageContext
-from vllm.utils import get_open_zmq_ipc_path
+from vllm.utils import get_open_zmq_ipc_path, random_uuid
 
 # gRPC imports
 import grpc
@@ -23,14 +24,10 @@ import daemon_pb2
 import daemon_pb2_grpc
 
 # FastAPI imports
-import multiprocessing
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
 import logging
-
-from vllm.sampling_params import SamplingParams
-from vllm.utils import random_uuid
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -118,10 +115,6 @@ class ModelManager:
         model_ids = [(manifest.get(model), model) for model in model_paths if model in manifest]
         models = [(reverse_alias.get(model, model), self.get_model_size(model_path) if with_size else -1, model) for model, model_path in model_ids]
         return [daemon_pb2.LocalModelInfo(model=model, size_mb=size, model_id=model_id) for model, size, model_id in models]
-    """
-    Manages model lifecycle: running, loading, unloading, etc.
-    For each model, starts a vLLM server on a unique port.
-    """
 
     def __init__(self):
         self.running_models = {}  # model_id: {process, client, ipc_path, status, pid}
@@ -624,36 +617,7 @@ def create_api_app(model_manager):
                 "root": model_id,
                 "parent": None,
             })
-        return JSONResponse({"data": models})
+        return  JSONResponse({"data": models})
 
     return app
-
-# Entrypoint
-def serve():
-    SOCKET_DIR = Path("/var/run/homl")
-    SOCKET_PATH = SOCKET_DIR / "homl.sock"
-    UNIX_SOCKET_PATH = f"unix://{SOCKET_PATH}"
-    SOCKET_DIR.mkdir(parents=True, exist_ok=True)
-
-    model_manager = ModelManager()
-
-    # Start gRPC server (blocking)
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-    daemon_pb2_grpc.add_DaemonServicer_to_server(DaemonServicer(model_manager), server)
-    server.add_insecure_port(UNIX_SOCKET_PATH)
-    server.start()
-    print(f"gRPC server started on {UNIX_SOCKET_PATH}")
-    if os.environ.get("HOML_INSECURE_SOCKET", "false").lower() == "true":
-        try:
-            os.chmod(SOCKET_PATH, 0o777)
-            print(f"Socket permissions set to world-writable for {SOCKET_PATH}")
-        except OSError as e:
-            print(f"Error setting socket permissions: {e}")
-
-    # Start FastAPI server (blocking)
-    app = create_api_app(model_manager)
-    print("Starting OpenAI-compatible API server on 0.0.0.0:8080")
-    uvicorn.run(app, host="0.0.0.0", port=8080)
-
-if __name__ == "__main__":
-    serve()
+>>>>>>> REPLACE
