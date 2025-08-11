@@ -1,11 +1,15 @@
 # --- New Implementation ---
+import argparse
 import hashlib
 import json
 import os
+import pickle
 import sys
 import threading
 import time
 from pathlib import Path
+
+from vllm.engine.arg_utils import AsyncEngineArgs
 
 # gRPC imports
 import grpc
@@ -170,6 +174,29 @@ class ModelManager:
             return False, model_id, None
         return model_path in self.list_model_paths(), model_id, model_path
 
+    def cache_model_config(self, model_id: str, model_path: str):
+        logger.info(f"Caching vLLM config for model {model_id}")
+        parser = AsyncEngineArgs.add_cli_args(argparse.ArgumentParser())
+        # We need to provide a model arg to parse_args, otherwise it will fail
+        # with "the following arguments are required: --model"
+        # The value does not matter as we override it later.
+        cli_args = parser.parse_args(["--model", "dummy"])
+        cli_args.model = os.path.join(MODEL_LIB, model_path)
+        # some other defaults that are not in EngineArgs but are in the openai server
+        cli_args.served_model_name = model_id
+
+        engine_args = AsyncEngineArgs.from_cli_args(cli_args)
+
+        # This will create the config and also download the model weights if they are not present.
+        # In our case, the model is already downloaded, so it should be fast.
+        vllm_config = engine_args.create_engine_config()
+
+        config_path = os.path.join(MODEL_LIB, model_path, "vllm_config.pkl")
+        with open(config_path, "wb") as f:
+            pickle.dump(vllm_config, f)
+
+        logger.info(f"Saved vLLM config for model {model_id} to {config_path}")
+
     def start_model(self, model_name):
         _, model_id, model_path = self.is_local(model_name)
         if not model_path:
@@ -187,11 +214,24 @@ class ModelManager:
                     self.stop_model(running_model_id)
         with self.lock:
             port = self._find_free_port()
-            local_dir = os.path.join(MODEL_LIB, model_path)
+
+            config_path = os.path.join(MODEL_LIB, model_path, "vllm_config.pkl")
+            if not os.path.exists(config_path):
+                self.cache_model_config(model_id, model_path)
+
+            alias, _ = self.load_alias()
+            served_model_name = model_name
+            if model_id in alias.values():
+                for k, v in alias.items():
+                    if v == model_id:
+                        served_model_name = k
+                        break
+
             cmd = [
-                "python3", "-m", "vllm.entrypoints.openai.api_server",
-                "--model", local_dir,
-                "--port", str(port)
+                "python3", "-m", "homl_server.vllm_runner",
+                "--config", config_path,
+                "--port", str(port),
+                "--served-model-name", served_model_name,
             ]
             logger.info(f"Starting model {model_id} on port {port} with command: {' '.join(cmd)}")
             env = os.environ.copy()
@@ -355,7 +395,10 @@ class ModelManager:
         local_dir = os.path.join(MODEL_LIB, model_path)
         self.add_manifest_entry(model_id, model_path)
         try:
-            snapshot_download(repo_id=model_id, local_dir=local_dir, token=hf_token if hf_token else None)
+            snapshot_download(repo_id=model_id,
+                              local_dir=local_dir,
+                              token=hf_token if hf_token else None)
+            self.cache_model_config(model_id, model_path)
         except Exception as e:
             import shutil
             shutil.rmtree(local_dir)
