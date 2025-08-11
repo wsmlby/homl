@@ -1,11 +1,22 @@
 # --- New Implementation ---
+import argparse
+import asyncio
 import hashlib
 import json
+import multiprocessing
 import os
+import cloudpickle as pickle
 import sys
 import threading
 import time
 from pathlib import Path
+
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.engine.multiprocessing.client import MQLLMEngineClient
+from vllm.engine.multiprocessing.engine import run_mp_engine
+from vllm.sampling_params import SamplingParams
+from vllm.usage.usage_lib import UsageContext
+from vllm.utils import get_open_zmq_ipc_path, random_uuid, FlexibleArgumentParser
 
 # gRPC imports
 import grpc
@@ -15,7 +26,7 @@ import daemon_pb2_grpc
 
 # FastAPI imports
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
 import logging
 
@@ -105,17 +116,9 @@ class ModelManager:
         model_ids = [(manifest.get(model), model) for model in model_paths if model in manifest]
         models = [(reverse_alias.get(model, model), self.get_model_size(model_path) if with_size else -1, model) for model, model_path in model_ids]
         return [daemon_pb2.LocalModelInfo(model=model, size_mb=size, model_id=model_id) for model, size, model_id in models]
-    """
-    Manages model lifecycle: running, loading, unloading, etc.
-    For each model, starts a vLLM server on a unique port.
-    """
-    BASE_PORT = 8100
-    MAX_PORT = 9000
 
     def __init__(self):
-        self.running_models = {}  # model_name: {pid, port, process, status}
-        self.model_ports = {}  # model_name: port
-        self.used_ports = set()
+        self.running_models = {}  # model_id: {process, client, ipc_path, status, pid}
         self.last_access = {}  # model_name: last access timestamp
         self.lock = threading.Lock()
         self._start_idle_unload_thread()
@@ -139,24 +142,8 @@ class ModelManager:
         t = threading.Thread(target=idle_unload_loop, daemon=True)
         t.start()
 
-    # def _scan_local_models(self):
-    #     # Scan cache dir for models
-    #     cache_dir = os.environ.get("HOML_MODEL_CACHE", "/models")
-    #     self.local_models = set()
-    #     if not os.path.exists(cache_dir):
-    #         return
-    #     for model_dir in Path(cache_dir).iterdir():
-    #         if model_dir.is_dir():
-    #             self.local_models.add(model_dir.name)
-
-    def _find_free_port(self):
-        for port in range(self.BASE_PORT, self.MAX_PORT):
-            if port not in self.used_ports:
-                return port
-        raise RuntimeError("No free ports available for vLLM models")
-
     def is_running(self, model_id):
-        return model_id in self.running_models and self.running_models[model_id]["process"].poll() is None
+        return model_id in self.running_models and self.running_models[model_id]["process"].is_alive()
 
     def is_local(self, model_name):
         alias, _ = self.load_alias()
@@ -170,47 +157,80 @@ class ModelManager:
             return False, model_id, None
         return model_path in self.list_model_paths(), model_id, model_path
 
+    def cache_model_config(self, model_id: str, model_path: str):
+        logger.info(f"Caching vLLM config for model {model_id}")
+        parser = FlexibleArgumentParser(description="vLLM OpenAI-Compatible RESTful API server.")
+        parser = AsyncEngineArgs.add_cli_args(parser)
+        # # We need to provide a model arg to parse_args, otherwise it will fail
+        # # with "the following arguments are required: --model"
+        # # The value does not matter as we override it later.
+        cli_args = parser.parse_args(["--model", os.path.join(MODEL_LIB, model_path)])
+        # cli_args.model = os.path.join(MODEL_LIB, os.path.join(MODEL_LIB, model_path))
+        # # some other defaults that are not in EngineArgs but are in the openai server
+        cli_args.served_model_name = model_id
+        logger.info(f"Parsed CLI args: {cli_args}")
+        engine_args = AsyncEngineArgs.from_cli_args(cli_args)
+
+        # This will create the config and also download the model weights if they are not present.
+        # In our case, the model is already downloaded, so it should be fast.
+        vllm_config = engine_args.create_engine_config()
+        return vllm_config
+        # print(f"vLLM config for model {model_id}: {vllm_config}")
+
+        # config_path = os.path.join(MODEL_LIB, model_path, "vllm_config.pkl")
+        # with open(config_path, "wb") as f:
+        #     pickle.dump(vllm_config, f)
+
+        # logger.info(f"Saved vLLM config for model {model_id} to {config_path}")
+
     def start_model(self, model_name):
         _, model_id, model_path = self.is_local(model_name)
         if not model_path:
-            return False, "Model not available locally", None, None
+            return False, "Model not available locally", None, None, model_id
         
         if self.is_running(model_id):
             self.last_access[model_id] = time.time()
-            return True, "Model already running", self.get_port(model_id), self.running_models[model_id]["pid"]
-        # if there is model running that is not this model, stop it
-        # TODO: enable multiple models running at the same time
+            # ZMQ doesn't use a port in the same way, but we need to return something
+            # for the client to connect to. We will handle this in the client.
+            # For now, returning None for the port.
+            return True, "Model already running", self.get_port(model_id), self.running_models[model_id]["pid"], model_id
+
         if self.running_models:
             for running_model_id in list(self.running_models.keys()):
                 if running_model_id != model_id and self.is_running(running_model_id):
                     logger.info(f"Stopping running model {running_model_id} before starting {model_id}")
                     self.stop_model(running_model_id)
         with self.lock:
-            port = self._find_free_port()
-            local_dir = os.path.join(MODEL_LIB, model_path)
-            cmd = [
-                "python3", "-m", "vllm.entrypoints.openai.api_server",
-                "--model", local_dir,
-                "--port", str(port)
-            ]
-            logger.info(f"Starting model {model_id} on port {port} with command: {' '.join(cmd)}")
-            env = os.environ.copy()
-            if "gpt-oss" in model_id:
-                env["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
-            try:
-                proc = subprocess.Popen(cmd, env=env)
-                self.running_models[model_id] = {
-                    "pid": proc.pid,
-                    "port": port,
-                    "process": proc,
-                    "status": "running"
-                }
-                self.model_ports[model_id] = port
-                self.used_ports.add(port)
-                self.last_access[model_id] = time.time()
-                return True, f"Model started on port {port}", port, proc.pid
-            except Exception as e:
-                return False, f"Failed to start model: {str(e)}", None, None
+            ipc_path = get_open_zmq_ipc_path()
+            vllm_config = self.cache_model_config(model_id, model_path)
+            # config_path = os.path.join(MODEL_LIB, model_path, "vllm_config.pkl")
+            # if not os.path.exists(config_path):
+                
+
+            # with open(config_path, 'rb') as f:
+            #     vllm_config = pickle.load(f)
+
+            engine_alive = multiprocessing.Value('b', True, lock=False)
+            ctx = multiprocessing.get_context("spawn")
+            proc = ctx.Process(
+                target=run_mp_engine,
+                args=(vllm_config, UsageContext.OPENAI_API_SERVER, ipc_path,
+                      False, # disable_log_stats
+                      True, # enable_log_requests
+                      engine_alive))
+            proc.start()
+
+            client = MQLLMEngineClient(ipc_path, vllm_config, proc.pid)
+
+            self.running_models[model_id] = {
+                "pid": proc.pid,
+                "process": proc,
+                "client": client,
+                "ipc_path": ipc_path,
+                "status": "running"
+            }
+            self.last_access[model_id] = time.time()
+            return True, f"Model engine started for {model_id}", None, model_id
 
     def stop_model(self, model_name):
         _, model_id, _ = self.is_local(model_name)
@@ -218,10 +238,9 @@ class ModelManager:
             if model_id in self.running_models:
                 proc = self.running_models[model_id]["process"]
                 proc.terminate()
-                port = self.running_models[model_id]["port"]
-                self.used_ports.discard(port)
+                client = self.running_models[model_id]["client"]
+                client.close()
                 del self.running_models[model_id]
-                self.model_ports.pop(model_id, None)
                 self.last_access.pop(model_id, None)
                 return True, "Model stopped"
             return False, "Model not running"
@@ -292,8 +311,6 @@ class ModelManager:
                 total_size += os.path.getsize(os.path.join(root, file))
         return total_size // (1024 * 1024)
 
-    def get_port(self, model_name):
-        return self.model_ports.get(model_name)
     def resolve_alias(self, model_name):
         if ":" in model_name and "/" in model_name:
             raise ValueError(f"Model ID should not contain both ':' and '/': {model_name}")
@@ -330,23 +347,28 @@ class ModelManager:
             return info
         except Exception as e:
             raise ValueError(f"Failed to fetch model info for '{model_id}': {str(e)}")
-    def wait_for_model(self, port, timeout=MODEL_LOAD_TIMEOUT):
-        """Wait for a model to be ready by checking if its port is available."""
+
+    def wait_for_model(self, model_id, timeout=MODEL_LOAD_TIMEOUT):
+        """Wait for a model to be ready by checking its engine client."""
         start_time = time.time()
-        while not self.is_ready(port):
+        client = self.running_models[model_id]["client"]
+        while True:
             if time.time() - start_time > timeout:
                 return False
-            time.sleep(1)
-        return True
-    def is_ready(self, port):
-        """Check if the model server is ready by making a simple HTTP request."""
-        import httpx
-        try:
-            url = f"http://localhost:{port}/v1/models"
-            response = httpx.get(url, timeout=5)
-            return response.status_code == 200
-        except httpx.RequestError:
-            return False
+            try:
+                asyncio.run(client.setup())
+                # client.setup()
+                return True
+            except TimeoutError:
+                # The process might have died.
+                proc = self.running_models[model_id]["process"]
+                if not proc.is_alive():
+                    return False
+                continue
+            except Exception as e:
+                logger.error(f"Error setting up engine client for {model_id}: {e}")
+                return False
+
     def download_model(self, model_id, hf_token=None):
         from huggingface_hub import snapshot_download
 
@@ -355,7 +377,10 @@ class ModelManager:
         local_dir = os.path.join(MODEL_LIB, model_path)
         self.add_manifest_entry(model_id, model_path)
         try:
-            snapshot_download(repo_id=model_id, local_dir=local_dir, token=hf_token if hf_token else None)
+            snapshot_download(repo_id=model_id,
+                              local_dir=local_dir,
+                              token=hf_token if hf_token else None)
+            # self.cache_model_config(model_id, model_path)
         except Exception as e:
             import shutil
             shutil.rmtree(local_dir)
@@ -400,13 +425,14 @@ class DaemonServicer(daemon_pb2_grpc.DaemonServicer):
 
     def StartModel(self, request, context):
         logger.info(f"Starting model: {request.model_name}")
-        ok, msg, port, pid = self.model_manager.start_model(request.model_name)
-        if self.model_manager.wait_for_model(port):
-            logger.info(f"Model {request.model_name} started successfully on port {port}")
-            return daemon_pb2.StartModelResponse(message=msg, pid=pid)
+        ok, msg, _, model_id = self.model_manager.start_model(request.model_name)
+        if ok and self.model_manager.wait_for_model(model_id):
+            logger.info(f"Model {request.model_name} started successfully")
+            return daemon_pb2.StartModelResponse(message=msg, pid=0)
         else:
             logger.error(f"Model {request.model_name} failed to start within timeout")
-            return daemon_pb2.StartModelResponse(message="Model failed to start", pid=pid)
+            self.model_manager.stop_model(request.model_name)
+            return daemon_pb2.StartModelResponse(message="Model failed to start", pid=0)
 
     def StopModel(self, request, context):
         logger.info(f"Stopping model: {request.model_name}")
@@ -478,64 +504,103 @@ def create_api_app(model_manager):
         allow_headers=["*"],
     )
 
-
-    import httpx
-
-    from fastapi.responses import StreamingResponse
     from fastapi import BackgroundTasks
+
     @app.post("/v1/chat/completions")
     async def chat_completions(request: dict, background_tasks: BackgroundTasks):
         model_name = request.get("model")
+        if not model_name:
+            raise HTTPException(status_code=400, detail="Missing model name")
+
         logger.info(f"Received chat completion request for model: {model_name}")
         local, model_id, model_path = model_manager.is_local(model_name)
-        if not model_id:
-            raise HTTPException(status_code=400, detail="Missing model name")
-        logger.info(f"Checking if model {model_id} is running")
-        # Update last access time for model
-        model_manager.last_access[model_id] = time.time()
+        if not local:
+            raise HTTPException(status_code=404,
+                                detail=f"Model '{model_name}' not found locally."
+                                )
+
+        # Ensure model is running
         if not model_manager.is_running(model_id):
-            logger.info(f"Model {model_id} is not running, starting it")
-            if local:
-                ok, msg, port, pid = model_manager.start_model(model_id)
-                logger.info(f"Model start response: {msg}")
-                if not ok:
-                    raise HTTPException(status_code=500, detail=msg)
-            else:
-                raise HTTPException(status_code=404, detail="Model not available locally")
-        port = model_manager.get_port(model_id)
-        logger.info(f"Model {model_id} is running on port {port}")
-        if model_manager.wait_for_model(port):
-            logger.info(f"Model {model_id} is ready on port {port}")
-        if not port:
-            raise HTTPException(status_code=500, detail="Model port not found")
-        stream = request.get("stream", False)
-        url = f"http://localhost:{port}/v1/chat/completions"
-        del request["model"]
-        try:   
+            logger.info(f"Model {model_id} is not running, starting it...")
+            ok, msg, _, pid = model_manager.start_model(model_name)
+            if not ok:
+                raise HTTPException(status_code=500, detail=msg)
+            if not model_manager.wait_for_model(model_id):
+                model_manager.stop_model(model_id)
+                raise HTTPException(status_code=500,
+                                    detail="Model failed to start.")
+
+        # Update last access time
+        model_manager.last_access[model_id] = time.time()
+
+        client = model_manager.running_models[model_id]["client"]
+
+        try:
+            sampling_params = SamplingParams(
+                n=request.get("n", 1),
+                presence_penalty=request.get("presence_penalty", 0.0),
+                frequency_penalty=request.get("frequency_penalty", 0.0),
+                temperature=request.get("temperature", 1.0),
+                top_p=request.get("top_p", 1.0),
+                max_tokens=request.get("max_tokens", 256),
+                stop=request.get("stop", []),
+            )
+
+            messages = request.get("messages", [])
+            tokenizer = await client.get_tokenizer()
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True)
+
+            request_id = f"homl-{random_uuid()}"
+            stream = request.get("stream", False)
+
             if stream:
-                async def generate_chunks():
-                    async with httpx.AsyncClient() as client:
-                        async with client.stream('POST', url, json=request, timeout=None) as upstream_response:
-                            async for chunk in upstream_response.aiter_text():
-                                if chunk.startswith("data: "):
-                                    try:
-                                        data0 = json.loads(chunk[6:].strip())
-                                        data0["model"] = model_name
-                                        chunk = f"data: {json.dumps(data0)}\n\n"
-                                        model_manager.last_access[model_id] = time.time()
-                                    except json.JSONDecodeError:
-                                        pass
-                                yield chunk
-                return StreamingResponse(generate_chunks(), media_type="text/event-stream")
+                async def generate_stream():
+                    previous_texts = [""] * sampling_params.n
+                    generator = client.generate(prompt, sampling_params, request_id)
+                    async for request_output in generator:
+                        for i, output in enumerate(request_output.outputs):
+                            delta_text = output.text[len(previous_texts[i]):]
+                            previous_texts[i] = output.text
+                            if delta_text:
+                                yield f"data: {json.dumps({'choices': [{'delta': {'content': delta_text}}]})}\n\n"
+                    yield "data: [DONE]\n\n"
+                return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
             else:
-                async with httpx.AsyncClient() as client:
-                    vllm_response = await client.post(url, json=request, timeout=30.0)
-                    rst = vllm_response.json()
-                    rst['model'] = model_name
-                    return JSONResponse(rst, status_code=vllm_response.status_code)
+                generator = client.generate(prompt, sampling_params, request_id)
+                final_output = None
+                async for request_output in generator:
+                    final_output = request_output
+
+                choices = []
+                for i, output in enumerate(final_output.outputs):
+                    choices.append({
+                        "index": i,
+                        "message": {
+                            "role": "assistant",
+                            "content": output.text,
+                        },
+                        "finish_reason": output.finish_reason,
+                    })
+
+                response = {
+                    "id": request_id,
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": model_name,
+                    "choices": choices,
+                    "usage": {
+                        "prompt_tokens": len(final_output.prompt_token_ids),
+                        "completion_tokens": sum(len(output.token_ids) for output in final_output.outputs),
+                        "total_tokens": len(final_output.prompt_token_ids) + sum(len(output.token_ids) for output in final_output.outputs),
+                    }
+                }
+                return JSONResponse(response)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"vLLM API error: {str(e)}")
-        
+            logger.error(f"Error processing request: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.get("/v1/models")
     async def list_models():
         logger.info("Listing available models")
@@ -558,6 +623,7 @@ def create_api_app(model_manager):
         return  JSONResponse({"data": models})
 
     return app
+
 
 # Entrypoint
 def serve():
