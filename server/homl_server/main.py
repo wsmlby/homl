@@ -1,4 +1,4 @@
-# --- New Implementation ---
+import asyncio
 import hashlib
 import json
 import os
@@ -46,6 +46,89 @@ os.environ["TORCHINDUCTOR_CACHE_DIR"] = TORCH_CACHE
 os.environ["VLLM_LAZY_LOAD_MODULE_INFO_CACHE"] = module_info_cache
 # Ensure cache and lib directories exist
 
+
+from vllm.utils import (FlexibleArgumentParser)
+from vllm.entrypoints.openai.tool_parsers import ToolParserManager
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.cli_args import FrontendArgs
+from vllm.entrypoints.openai.api_server import build_app, init_app_state, maybe_register_tokenizer_info_endpoint, build_async_engine_client
+from vllm.engine.async_llm_engine import AsyncLLMEngine  # type: ignore
+from vllm.engine.multiprocessing.client import MQLLMEngineClient
+
+
+## Instead of create a new process listen for http (that will start another process todo the actual work),
+## paying 2x the vLLM load time, we try to run the vLLM http server in the background
+## however, this doesn't work with the v1 engine as it requires the engine to be started on the main thread.
+## TODO: see if we can start the engine_client in the main thread and then run the http server in the background
+
+class VLLMBackgroundServer:
+    def __init__(self, port: int, model_name: str, model_path: str):
+        parser = FlexibleArgumentParser()
+        parser = AsyncEngineArgs.add_cli_args(parser)
+        parser = FrontendArgs.add_cli_args(parser)
+        cli_args = parser.parse_args(["--model", model_path])
+        cli_args.port = port
+        cli_args.host = "0.0.0.0"
+        cli_args.served_model_name = model_name
+        args = parser.parse_args()
+        self.args = args
+        self.port = port
+        if args.tool_parser_plugin and len(args.tool_parser_plugin) > 3:
+            ToolParserManager.import_tool_parser(args.tool_parser_plugin)
+        self._loop = None
+        self._startup_event = threading.Event()
+    
+    async def start_async(self):
+        args = self.args
+        async with build_async_engine_client(args) as engine_client:
+            self.engine_process = engine_client.engine_proc
+            maybe_register_tokenizer_info_endpoint(args)
+            app = build_app(args)
+
+            vllm_config = await engine_client.get_vllm_config()
+            await init_app_state(engine_client, vllm_config, app.state, args)
+
+            logger.info(f"Starting vLLM API server on {self.port}")
+            # Configure the server
+            config = uvicorn.Config(
+                app, 
+                host="0.0.0.0", 
+                port=self.port, 
+                log_level="info"
+            )
+            
+            self.server = uvicorn.Server(config)
+            server_task = asyncio.create_task(self.server.serve())
+            self._startup_event.set()
+            await server_task
+            logger.info("vLLM API server has finished successfully.")
+    def _start_server_in_thread(self):
+        """
+        The target function for the server thread. It creates a new event
+        loop and runs the async server logic on it.
+        """
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_until_complete(self.start_async())
+        self._loop.close()
+    def start(self):
+        
+        self._server_thread = threading.Thread(
+            target=self._start_server_in_thread,
+        )
+        self._server_thread.start()
+        self._startup_event.wait() 
+        return self.engine_process
+    def stop(self):
+        if self.server:
+            # Safely shut down the server from another thread
+            self.server.should_exit = True
+            self._loop.call_soon_threadsafe(lambda: None)
+            self._server_thread.join()
+            logger.info("Server thread cleaned up done")
+            self.server = None
+            self._loop = None
+            self._startup_event.clear()
 
 class ModelManager:
     def load_alias(self):
@@ -119,7 +202,6 @@ class ModelManager:
 
     def __init__(self):
         self.running_models = {}  # model_name: {pid, port, process, status}
-        self.model_ports = {}  # model_name: port
         self.used_ports = set()
         self.last_access = {}  # model_name: last access timestamp
         self.lock = threading.Lock()
@@ -132,6 +214,8 @@ class ModelManager:
                 models_to_unload = []
                 with self.lock:
                     for model_id in list(self.running_models.keys()):
+                        if self.running_models[model_id]["status"] == "starting":
+                            continue
                         last = self.last_access.get(model_id, now)
                         if now - last > MODEL_UNLOAD_IDLE_TIME:
                             logger.info(f"Unloading idle model {model_id} after {now - last:.1f}s of inactivity")
@@ -161,7 +245,7 @@ class ModelManager:
         raise RuntimeError("No free ports available for vLLM models")
 
     def is_running(self, model_id):
-        return model_id in self.running_models and self.running_models[model_id]["process"].poll() is None
+        return model_id in self.running_models and self.running_models[model_id]['status'] == "running" and self.running_models[model_id]["process"].is_alive()
 
     def is_local(self, model_name):
         alias, _ = self.load_alias()
@@ -179,7 +263,11 @@ class ModelManager:
         _, model_id, model_path = self.is_local(model_name)
         if not model_path:
             return False, "Model not available locally", None, None
-        
+        if model_id in self.running_models:
+            if self.running_models[model_id].get("status") == "starting":
+                # Model is already starting
+                return True, "Model starting", self.get_port(model_id), self.running_models[model_id]["pid"]
+
         if self.is_running(model_id):
             self.last_access[model_id] = time.time()
             return True, "Model already running", self.get_port(model_id), self.running_models[model_id]["pid"]
@@ -192,41 +280,54 @@ class ModelManager:
                     self.stop_model(running_model_id)
         with self.lock:
             port = self._find_free_port()
+            self.running_models[model_id] = {
+                "pid": None,
+                "port": port,
+                "process": None,
+                "status": "starting",
+                "server": None
+            }
             local_dir = os.path.join(MODEL_LIB, model_path)
-            cmd = [
-                "python3", "-m", "vllm.entrypoints.openai.api_server",
-                "--model", local_dir,
-                "--port", str(port)
-            ]
-            logger.info(f"Starting model {model_id} on port {port} with command: {' '.join(cmd)}")
             env = os.environ.copy()
             if "gpt-oss" in model_id:
-                env["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
-            try:
-                proc = subprocess.Popen(cmd, env=env)
-                self.running_models[model_id] = {
-                    "pid": proc.pid,
-                    "port": port,
-                    "process": proc,
-                    "status": "running"
-                }
-                self.model_ports[model_id] = port
-                self.used_ports.add(port)
-                self.last_access[model_id] = time.time()
-                return True, f"Model started on port {port}", port, proc.pid
-            except Exception as e:
-                return False, f"Failed to start model: {str(e)}", None, None
+                os.environ["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
+                os.environ["VLLM_USE_V1"] = "1"
+            server = VLLMBackgroundServer(port, model_name, local_dir)
+            
+            logger.info(f"Starting model {model_id} on port {port}")
+            server.start()
+            # revert the environment variable change
+            if "gpt-oss" in model_id:
+                if "VLLM_ATTENTION_BACKEND" in env:
+                    os.environ["VLLM_ATTENTION_BACKEND"] = env["VLLM_ATTENTION_BACKEND"]
+                else:
+                    del os.environ["VLLM_ATTENTION_BACKEND"]
+                if "VLLM_USE_V1" in env:
+                    os.environ["VLLM_USE_V1"] = env["VLLM_USE_V1"]
+                else:
+                    del os.environ["VLLM_USE_V1"]
+            self.running_models[model_id] = {
+                "pid": server.engine_process.pid,
+                "port": port,
+                "process": server.engine_process,
+                "status": "running",
+                "server": server
+            }
+            self.used_ports.add(port)
+            self.last_access[model_id] = time.time()
+            return True, f"Model started on port {port}", port, server.engine_process.pid
 
     def stop_model(self, model_name):
         _, model_id, _ = self.is_local(model_name)
         with self.lock:
             if model_id in self.running_models:
-                proc = self.running_models[model_id]["process"]
-                proc.terminate()
+                if not self.is_running(model_id):
+                    return False, "Model not running"
+                server = self.running_models[model_id]["server"]
+                server.stop()
                 port = self.running_models[model_id]["port"]
                 self.used_ports.discard(port)
                 del self.running_models[model_id]
-                self.model_ports.pop(model_id, None)
                 self.last_access.pop(model_id, None)
                 return True, "Model stopped"
             return False, "Model not running"
@@ -278,6 +379,8 @@ class ModelManager:
         
 
     def get_running_info(self, name, data):
+        if data["status"] != "running":
+            return daemon_pb2.RunningModel(model_name=name, pid=0, status=data["status"], ram_mb=0, vram_usage=[])
         pid = data["pid"]
         if pid is None:
             raise ValueError(f"Process ID for model '{name}' is None, cannot retrieve running info")
@@ -286,7 +389,7 @@ class ModelManager:
         return daemon_pb2.RunningModel(model_name=name, pid=data["pid"], status=data["status"], ram_mb=ram, vram_usage=vram)
     def list_running(self):
         _, alias = self.load_alias()
-        return [(alias.get(name, name), name) for name in self.running_models if self.is_running(name)]
+        return [(alias.get(name, name), name) for name in self.running_models]
     
     def get_model_size(self, model_path):
         """Get the size of a model in MB."""
@@ -298,7 +401,7 @@ class ModelManager:
         return total_size // (1024 * 1024)
 
     def get_port(self, model_name):
-        return self.model_ports.get(model_name)
+        return self.running_models.get(model_name, {}).get("port", None)
     def resolve_alias(self, model_name):
         if ":" in model_name and "/" in model_name:
             raise ValueError(f"Model ID should not contain both ':' and '/': {model_name}")
