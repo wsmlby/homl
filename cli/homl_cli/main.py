@@ -405,24 +405,26 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
 
 
 
-def start_model(model_name):
+def start_model(model_name, eager):
     """Starts a model with the vLLM server. Used by both run and chat commands."""
     stub = get_client_stub()
     if stub:
         spinner = Spinner(f"Starting model '{model_name}' (vLLM is a bit slow to start)...")
         spinner.start()
         try:
-            response = stub.StartModel(daemon_pb2.StartModelRequest(model_name=model_name))
+            response = stub.StartModel(daemon_pb2.StartModelRequest(model_name=model_name, eager_mode=eager))
         finally:
             spinner.stop()
         click.echo(response.message)
         return response.pid
+    return 0
 
 @main.command()
 @click.argument('model_name')
-def run(model_name):
+@click.option('--eager', is_flag=True, help="Start the model in eager mode, faster startup but slower latency, similar throughput.")
+def run(model_name, eager):
     """Starts a model with the vLLM server."""
-    start_model(model_name)
+    start_model(model_name, eager=eager)
 
 @main.command()
 def ps():
@@ -456,7 +458,7 @@ def ps():
 def chat(model_name):
     """Starts a chat session with a model using the OpenAI-compatible API."""
     # Start the model using the helper (no spinner needed here, already in helper)
-    if start_model(model_name) == 0:
+    if start_model(model_name, True) == 0:
         return
     port = config.get_config_value("port", 7456)
     api_url = f"http://localhost:{port}/v1/chat/completions"

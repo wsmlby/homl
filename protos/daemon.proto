@@ -54,6 +54,7 @@ message PullModelProgress {
 
 message StartModelRequest {
   string model_name = 1;
+  bool eager_mode = 2;
 }
 
 message StartModelResponse {

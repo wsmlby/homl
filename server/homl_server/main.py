@@ -54,7 +54,7 @@ from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.api_server import build_app, init_app_state, maybe_register_tokenizer_info_endpoint, build_async_engine_client, run_server, make_arg_parser, validate_parsed_serve_args
 
 
-def start_server(port: int, model_name: str, model_path: str):
+def start_server(port: int, model_name: str, model_path: str, eager):
     """
     Starts the vLLM server in a separate thread.
     This is a workaround to avoid starting a new process for each request.
@@ -62,7 +62,7 @@ def start_server(port: int, model_name: str, model_path: str):
     parser = FlexibleArgumentParser(
         description="vLLM OpenAI-Compatible RESTful API server.")
     parser = make_arg_parser(parser)
-    args = parser.parse_args(["--model", model_path, "--port", str(port)])
+    args = parser.parse_args(["--model", model_path, "--port", str(port)] + (["--enforce-eager"] if eager else []))
     validate_parsed_serve_args(args)
 
     uvloop.run(run_server(args))
@@ -197,7 +197,7 @@ class ModelManager:
             return False, model_id, None
         return model_path in self.list_model_paths(), model_id, model_path
 
-    def start_model(self, model_name):
+    def start_model(self, model_name, eager):
         _, model_id, model_path = self.is_local(model_name)
         if not model_path:
             return False, "Model not available locally", None, None
@@ -237,7 +237,7 @@ class ModelManager:
                     "--port", str(port)
                 ]
                 # proc = subprocess.Popen(cmd, env=env)
-                proc = self.mp_context.Process(target=start_server, args=(port, model_name, local_dir))
+                proc = self.mp_context.Process(target=start_server, args=(port, model_name, local_dir, eager))
                 proc.start()
 
                 if "gpt-oss" in model_id:
@@ -384,7 +384,9 @@ class ModelManager:
     def wait_for_model(self, port, timeout=MODEL_LOAD_TIMEOUT):
         """Wait for a model to be ready by checking if its port is available."""
         start_time = time.time()
+        print(f"Waiting for model server on port {port} to be ready...")
         while not self.is_ready(port):
+            print(f"[Not Ready]Waiting for model server on port {port} to be ready...")
             if time.time() - start_time > timeout:
                 return False
             time.sleep(1)
@@ -451,7 +453,7 @@ class DaemonServicer(daemon_pb2_grpc.DaemonServicer):
 
     def StartModel(self, request, context):
         logger.info(f"Starting model: {request.model_name}")
-        ok, msg, port, pid = self.model_manager.start_model(request.model_name)
+        ok, msg, port, pid = self.model_manager.start_model(request.model_name, request.eager_mode)
         if not ok:
             logger.error(f"Failed to start model {request.model_name}: {msg}")
             return daemon_pb2.StartModelResponse(message=msg, pid=0)
@@ -550,7 +552,7 @@ async def proxy_streaming_request(request, path, port, model_name, model_id, mod
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"vLLM API error: {str(e)}")
 
-def get_model_ready(model_name, model_manager):
+def get_model_ready(model_name, model_manager, eager):
     local, model_id, model_path = model_manager.is_local(model_name)
     if not model_id:
         raise HTTPException(status_code=400, detail="Missing model name")
@@ -560,7 +562,7 @@ def get_model_ready(model_name, model_manager):
     if not model_manager.is_running(model_id):
         logger.info(f"Model {model_id} is not running, starting it")
         if local:
-            ok, msg, port, pid = model_manager.start_model(model_id)
+            ok, msg, port, pid = model_manager.start_model(model_id, eager)
             logger.info(f"Model start response: {msg}")
             if not ok:
                 raise HTTPException(status_code=500, detail=msg)
@@ -579,7 +581,7 @@ async def proxied_api(request, path, model_manager):
     model_name = request.get("model")
     logger.info(f"Received request@ path: {path} for model: {model_name}")
     del request["model"]
-    port, model_id = get_model_ready(model_name, model_manager)
+    port, model_id = get_model_ready(model_name, model_manager, True)
     return await proxy_streaming_request(request, path, port, model_name, model_id, model_manager)
 
 # FastAPI OpenAI-Compatible API
