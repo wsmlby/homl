@@ -452,6 +452,9 @@ class DaemonServicer(daemon_pb2_grpc.DaemonServicer):
     def StartModel(self, request, context):
         logger.info(f"Starting model: {request.model_name}")
         ok, msg, port, pid = self.model_manager.start_model(request.model_name)
+        if not ok:
+            logger.error(f"Failed to start model {request.model_name}: {msg}")
+            return daemon_pb2.StartModelResponse(message=msg, pid=0)
         if self.model_manager.wait_for_model(port):
             logger.info(f"Model {request.model_name} started successfully on port {port}")
             return daemon_pb2.StartModelResponse(message=msg, pid=pid)

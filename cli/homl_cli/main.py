@@ -1,4 +1,26 @@
 import json
+import time
+import threading
+import itertools
+class Spinner:
+    def __init__(self, message="Starting..."):
+        self.message = message
+        self.done = threading.Event()
+        self.spinner_cycle = itertools.cycle(['|', '/', '-', '\\'])
+        self.thread = threading.Thread(target=self._spin)
+
+    def _spin(self):
+        while not self.done.is_set():
+            click.echo(f"\r{self.message} {next(self.spinner_cycle)}", nl=False)
+            time.sleep(0.1)
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self, ok_message="✅        "):
+        self.done.set()
+        self.thread.join()
+        click.echo(f"\r{self.message} {ok_message}")
 import platform as platform_module
 import sys
 import click
@@ -382,15 +404,25 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
 
 
 
+
+def start_model(model_name):
+    """Starts a model with the vLLM server. Used by both run and chat commands."""
+    stub = get_client_stub()
+    if stub:
+        spinner = Spinner(f"Starting model '{model_name}' (vLLM is a bit slow to start)...")
+        spinner.start()
+        try:
+            response = stub.StartModel(daemon_pb2.StartModelRequest(model_name=model_name))
+        finally:
+            spinner.stop()
+        click.echo(response.message)
+        return response.pid
+
 @main.command()
 @click.argument('model_name')
 def run(model_name):
     """Starts a model with the vLLM server."""
-    stub = get_client_stub()
-    if stub:
-        click.echo(f"Starting model '{model_name}' (vLLM is a bit slow to start)...")
-        response = stub.StartModel(daemon_pb2.StartModelRequest(model_name=model_name))
-        click.echo(response.message)
+    start_model(model_name)
 
 @main.command()
 def ps():
@@ -423,6 +455,9 @@ def ps():
 @click.argument('model_name')
 def chat(model_name):
     """Starts a chat session with a model using the OpenAI-compatible API."""
+    # Start the model using the helper (no spinner needed here, already in helper)
+    if start_model(model_name) == 0:
+        return
     port = config.get_config_value("port", 7456)
     api_url = f"http://localhost:{port}/v1/chat/completions"
     # api_url = f"http://172.23.0.2:8100/v1/chat/completions"
