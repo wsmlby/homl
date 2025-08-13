@@ -1,4 +1,3 @@
-# --- New Implementation ---
 import hashlib
 import json
 import os
@@ -20,6 +19,7 @@ import uvicorn
 import httpx
 from fastapi.responses import StreamingResponse
 import logging
+import multiprocessing
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,6 +46,26 @@ os.environ["TORCHINDUCTOR_CACHE_DIR"] = TORCH_CACHE
 os.environ["VLLM_LAZY_LOAD_MODULE_INFO_CACHE"] = module_info_cache
 # Ensure cache and lib directories exist
 
+import uvloop
+from vllm.utils import (FlexibleArgumentParser)
+from vllm.entrypoints.openai.tool_parsers import ToolParserManager
+from vllm.engine.arg_utils import AsyncEngineArgs
+from vllm.entrypoints.openai.cli_args import FrontendArgs
+from vllm.entrypoints.openai.api_server import build_app, init_app_state, maybe_register_tokenizer_info_endpoint, build_async_engine_client, run_server, make_arg_parser, validate_parsed_serve_args
+
+
+def start_server(port: int, model_name: str, model_path: str):
+    """
+    Starts the vLLM server in a separate thread.
+    This is a workaround to avoid starting a new process for each request.
+    """
+    parser = FlexibleArgumentParser(
+        description="vLLM OpenAI-Compatible RESTful API server.")
+    parser = make_arg_parser(parser)
+    args = parser.parse_args(["--model", model_path, "--port", str(port)])
+    validate_parsed_serve_args(args)
+
+    uvloop.run(run_server(args))
 
 class ModelManager:
     def load_alias(self):
@@ -59,7 +79,7 @@ class ModelManager:
                     alias = json.load(f)
                     return alias, {v:k for k, v in alias.items()}  # Reverse mapping
             except Exception as e:
-                print(f"Error loading alias: {e}")
+                logger.error(f"Error loading alias: {e}")
         return {}, {}
     def load_manifest(self):
         # Load manifest.json if exists
@@ -71,7 +91,7 @@ class ModelManager:
                     mapping = json.load(f)
                     return mapping, {v:k for k, v in mapping.items()}  # Reverse mapping
             except Exception as e:
-                print(f"Error loading manifest: {e}")
+                logger.error(f"Error loading manifest: {e}")
         return {}, {}
     def add_manifest_entry(self, model_id, model_path):
         manifest, reverse_manifest = self.load_manifest()
@@ -83,7 +103,7 @@ class ModelManager:
                 import json
                 json.dump(manifest, f)
         except Exception as e:
-            print(f"Error writing manifest: {e}")
+            logger.error(f"Error writing manifest: {e}")
     def add_alias_entry(self, alias_name, model_id):
         alias, reverse_alias = self.load_alias()
         alias[alias_name] = model_id
@@ -94,7 +114,7 @@ class ModelManager:
                 import json
                 json.dump(alias, f)
         except Exception as e:
-            print(f"Error writing alias: {e}")
+            logger.error(f"Error writing alias: {e}")
 
     def list_model_paths(self):
         # List model directories in the cache
@@ -119,11 +139,11 @@ class ModelManager:
 
     def __init__(self):
         self.running_models = {}  # model_name: {pid, port, process, status}
-        self.model_ports = {}  # model_name: port
         self.used_ports = set()
         self.last_access = {}  # model_name: last access timestamp
         self.lock = threading.Lock()
         self._start_idle_unload_thread()
+        self.mp_context = multiprocessing.get_context("fork")
 
     def _start_idle_unload_thread(self):
         def idle_unload_loop():
@@ -132,6 +152,8 @@ class ModelManager:
                 models_to_unload = []
                 with self.lock:
                     for model_id in list(self.running_models.keys()):
+                        if self.running_models[model_id]["status"] == "starting":
+                            continue
                         last = self.last_access.get(model_id, now)
                         if now - last > MODEL_UNLOAD_IDLE_TIME:
                             logger.info(f"Unloading idle model {model_id} after {now - last:.1f}s of inactivity")
@@ -161,7 +183,7 @@ class ModelManager:
         raise RuntimeError("No free ports available for vLLM models")
 
     def is_running(self, model_id):
-        return model_id in self.running_models and self.running_models[model_id]["process"].poll() is None
+        return model_id in self.running_models and self.running_models[model_id]['status'] == "running" and self.running_models[model_id]["process"].is_alive()
 
     def is_local(self, model_name):
         alias, _ = self.load_alias()
@@ -179,7 +201,11 @@ class ModelManager:
         _, model_id, model_path = self.is_local(model_name)
         if not model_path:
             return False, "Model not available locally", None, None
-        
+        if model_id in self.running_models:
+            if self.running_models[model_id].get("status") == "starting":
+                # Model is already starting
+                return True, "Model starting", self.get_port(model_id), self.running_models[model_id]["pid"]
+
         if self.is_running(model_id):
             self.last_access[model_id] = time.time()
             return True, "Model already running", self.get_port(model_id), self.running_models[model_id]["pid"]
@@ -192,41 +218,59 @@ class ModelManager:
                     self.stop_model(running_model_id)
         with self.lock:
             port = self._find_free_port()
+            self.running_models[model_id] = {
+                "pid": None,
+                "port": port,
+                "process": None,
+                "status": "starting",
+                "server": None
+            }
             local_dir = os.path.join(MODEL_LIB, model_path)
-            cmd = [
-                "python3", "-m", "vllm.entrypoints.openai.api_server",
-                "--model", local_dir,
-                "--port", str(port)
-            ]
-            logger.info(f"Starting model {model_id} on port {port} with command: {' '.join(cmd)}")
             env = os.environ.copy()
             if "gpt-oss" in model_id:
-                env["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
+                os.environ["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN_VLLM_V1"
+            logger.info(f"Starting model in a separate process {model_id} on port {port} with local dir {local_dir} model_name: {model_name}")
             try:
-                proc = subprocess.Popen(cmd, env=env)
+                cmd = [
+                    "python3", "-m", "vllm.entrypoints.openai.api_server",
+                    "--model", local_dir,
+                    "--port", str(port)
+                ]
+                # proc = subprocess.Popen(cmd, env=env)
+                proc = self.mp_context.Process(target=start_server, args=(port, model_name, local_dir))
+                proc.start()
+
+                if "gpt-oss" in model_id:
+                    if "VLLM_ATTENTION_BACKEND" in env:
+                        os.environ["VLLM_ATTENTION_BACKEND"] = env["VLLM_ATTENTION_BACKEND"]
+                    else:
+                        del os.environ["VLLM_ATTENTION_BACKEND"]
                 self.running_models[model_id] = {
                     "pid": proc.pid,
                     "port": port,
                     "process": proc,
                     "status": "running"
                 }
-                self.model_ports[model_id] = port
                 self.used_ports.add(port)
                 self.last_access[model_id] = time.time()
                 return True, f"Model started on port {port}", port, proc.pid
             except Exception as e:
+                port = self.running_models[model_id]["port"]
+                self.used_ports.discard(port)
+                del self.running_models[model_id]
                 return False, f"Failed to start model: {str(e)}", None, None
 
     def stop_model(self, model_name):
         _, model_id, _ = self.is_local(model_name)
         with self.lock:
             if model_id in self.running_models:
+                if not self.is_running(model_id):
+                    return False, "Model not running"
                 proc = self.running_models[model_id]["process"]
                 proc.terminate()
                 port = self.running_models[model_id]["port"]
                 self.used_ports.discard(port)
                 del self.running_models[model_id]
-                self.model_ports.pop(model_id, None)
                 self.last_access.pop(model_id, None)
                 return True, "Model stopped"
             return False, "Model not running"
@@ -278,6 +322,8 @@ class ModelManager:
         
 
     def get_running_info(self, name, data):
+        if data["status"] != "running":
+            return daemon_pb2.RunningModel(model_name=name, pid=0, status=data["status"], ram_mb=0, vram_usage=[])
         pid = data["pid"]
         if pid is None:
             raise ValueError(f"Process ID for model '{name}' is None, cannot retrieve running info")
@@ -286,7 +332,7 @@ class ModelManager:
         return daemon_pb2.RunningModel(model_name=name, pid=data["pid"], status=data["status"], ram_mb=ram, vram_usage=vram)
     def list_running(self):
         _, alias = self.load_alias()
-        return [(alias.get(name, name), name) for name in self.running_models if self.is_running(name)]
+        return [(alias.get(name, name), name) for name in self.running_models]
     
     def get_model_size(self, model_path):
         """Get the size of a model in MB."""
@@ -298,7 +344,7 @@ class ModelManager:
         return total_size // (1024 * 1024)
 
     def get_port(self, model_name):
-        return self.model_ports.get(model_name)
+        return self.running_models.get(model_name, {}).get("port", None)
     def resolve_alias(self, model_name):
         if ":" in model_name and "/" in model_name:
             raise ValueError(f"Model ID should not contain both ':' and '/': {model_name}")
@@ -596,17 +642,17 @@ def serve():
     daemon_pb2_grpc.add_DaemonServicer_to_server(DaemonServicer(model_manager), server)
     server.add_insecure_port(UNIX_SOCKET_PATH)
     server.start()
-    print(f"gRPC server started on {UNIX_SOCKET_PATH}")
+    logger.info(f"gRPC server started on {UNIX_SOCKET_PATH}")
     if os.environ.get("HOML_INSECURE_SOCKET", "false").lower() == "true":
         try:
             os.chmod(SOCKET_PATH, 0o777)
-            print(f"Socket permissions set to world-writable for {SOCKET_PATH}")
+            logger.info(f"Socket permissions set to world-writable for {SOCKET_PATH}")
         except OSError as e:
-            print(f"Error setting socket permissions: {e}")
+            logger.info(f"Error setting socket permissions: {e}")
 
     # Start FastAPI server (blocking)
     app = create_api_app(model_manager)
-    print("Starting OpenAI-compatible API server on 0.0.0.0:8080")
+    logger.info("Starting OpenAI-compatible API server on 0.0.0.0:8080")
     uvicorn.run(app, host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
