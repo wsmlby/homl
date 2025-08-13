@@ -309,6 +309,10 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
     homl_dir = config.CONFIG_DIR
     socket_dir = homl_dir / "run"
     model_dir = Path(model_home)
+    module_info_cache_path = model_dir / "module_info_cache"
+    if module_info_cache_path.exists():
+        click.echo(f"Removing old module info cache at {module_info_cache_path}")
+        shutil.rmtree(module_info_cache_path)
     compose_path = homl_dir / "docker-compose.yml"
     template_path = get_resource_path("docker-compose.yml.template")
     user_etc_path = homl_dir / "etc_pwd_tmp"
