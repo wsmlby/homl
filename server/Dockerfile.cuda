@@ -21,7 +21,6 @@ ENV ACCELERATOR=CUDA
 COPY ./homl_server ./homl_server
 COPY ./vllm_patches ./patches
 
-RUN cd /usr/local/lib/python3.12/dist-packages/vllm && patch -p1 < /app/patches/api_server.patch
 RUN cd /usr/local/lib/python3.12/dist-packages/vllm && patch -p1 < /app/patches/registry.patch
 
 WORKDIR /app/homl_server
