@@ -5,6 +5,17 @@ from typing import Dict, Any
 
 CONFIG_DIR = Path.home() / ".homl"
 CONFIG_FILE = CONFIG_DIR / "config.json"
+# Define the default socket path within the user's homl config directory
+DEFAULT_SOCKET_PATH = CONFIG_DIR / "run" / "homl.sock"
+
+# Config keys and descriptions
+CONFIG_KEYS = {
+    "port": "Port number for the OpenAI-compatible API server (default: 7456)",
+    "model_home": "Model location on the host (default: ~/.homl/models)",
+    "model_load_timeout": "Timeout (seconds) for model loading (default: 180)",
+    "model_unload_idle_time": "Idle time (seconds) before unloading a model (default: 600)",
+    "socket_path": "Path to the server socket file"
+}
 
 def ensure_config_exists():
     """Ensures the config directory and file exist."""
@@ -38,3 +49,9 @@ def get_config_value(key: str, default: Any = None) -> Any:
     """Gets a specific value from the config."""
     config = load_config()
     return config.get(key, default)
+
+def get_socket_path() -> str:
+    """Gets the socket path from config, or returns the default."""
+    # In the future, a `homl config` command could change this value
+    path = get_config_value("socket_path", str(DEFAULT_SOCKET_PATH))
+    return f"unix://{path}"
