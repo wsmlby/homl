@@ -128,8 +128,9 @@ def restart():
 @click.option('--insecure-socket', is_flag=True, help="Use a world-writable socket (less secure).")
 @click.option('--upgrade', is_flag=True, help="Force reinstallation even if the server is already running.")
 @click.option('--gptoss', is_flag=True, help="Use the GPTOSS image instead of the default.")
-def install(insecure_socket, upgrade, gptoss):
-    install_utils.install(insecure_socket=insecure_socket, upgrade=upgrade, gptoss=gptoss)
+@click.option('--webui', is_flag=True, help="Install the Open WebUI alongside the server.")
+def install(insecure_socket, upgrade, gptoss, webui):
+    install_utils.install(insecure_socket=insecure_socket, upgrade=upgrade, gptoss=gptoss, install_webui=webui)
 
 @main.command()
 @click.argument('model_name')

@@ -135,7 +135,7 @@ def check_and_install_nvidia_runtime():
     return False
 
 
-def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
+def install(insecure_socket: bool, upgrade: bool, gptoss: bool, install_webui: bool = False):
     """Installs and starts the HoML server using Docker Compose."""
     click.echo("🚀 Starting HoML server installation...")
 
@@ -179,7 +179,7 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
             f"Removing old module info cache at {module_info_cache_path}")
         shutil.rmtree(module_info_cache_path)
     compose_path = homl_dir / "docker-compose.yml"
-    template_path = get_resource_path("docker-compose.yml.template")
+    template_path = get_resource_path("data/docker-compose.yml.template")
     user_etc_path = homl_dir / "etc_pwd_tmp"
 
     socket_dir.mkdir(parents=True, exist_ok=True)
@@ -212,6 +212,14 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
         HOML_MODEL_UNLOAD_IDLE_TIME=str(model_unload_idle_time)
     )
 
+    if install_webui:
+        template_path = get_resource_path("data/openui.template")
+        with open(template_path, 'r') as f:
+            openui_template = Template(f.read())
+        compose_content += openui_template.substitute(
+            WEBUI_PORT=str(7457)
+        )
+
     with open(compose_path, 'w') as f:
         f.write(compose_content)
 
@@ -228,6 +236,9 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool):
         click.echo("  3. Chat with it: 'homl chat qwen3:0.6b'")
         click.echo("\nYour OpenAI-compatible API is available at:")
         click.secho(f"  http://0.0.0.0:{port}", fg="cyan")
+        if install_webui:
+            click.echo("\nYour Open WebUI is available at:")
+            click.secho(f"  http://0.0.0.0:7457", fg="cyan")
 
     try:
         if upgrade:
