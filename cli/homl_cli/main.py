@@ -1,5 +1,5 @@
 from homl_cli.utils import install_utils
-from homl_cli.utils.chat import chat_with_model
+from homl_cli.utils.chat import chat_with_model, complete_with_model
 from homl_cli.utils import get_resource_path
 from homl_cli.utils.model import start_model, get_client_stub
 
@@ -180,6 +180,21 @@ def chat(model_name):
     click.echo(
         f"Starting chat with model '{model_name}'. Type 'exit' to quit.")
     chat_with_model(model_name, api_url)
+
+
+@main.command()
+@click.argument('model_name')
+@click.argument('prompt')
+@click.option('--limit')
+def complete(model_name, prompt, limit):
+    """Starts a chat session with a model using the OpenAI-compatible API."""
+    if start_model(model_name, True) == 0:
+        return
+    port = config.get_config_value("port", 7456)
+    api_url = f"http://localhost:{port}/v1/completions"
+    click.echo(prompt)
+    complete_with_model(model_name, api_url, prompt, limit=int(limit) if limit else 1024)
+
 
 
 @main.command()

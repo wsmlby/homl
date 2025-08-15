@@ -1,6 +1,42 @@
 import json
 import click
 import requests
+def complete_with_model(model_name: str, api_url: str, user_input: str, limit: int):
+    payload = {
+        "model": model_name,
+        "prompt": user_input,
+        "max_tokens": limit,
+        "stream": True
+    }
+    try:
+        with requests.post(api_url, json=payload, stream=True) as resp:
+            if resp.status_code == 500:
+                click.secho(
+                    "Error: The model is not running or the server is not available.", fg="red")
+                click.secho(resp.content.decode(errors="ignore"), fg="red")
+                return
+            resp.raise_for_status()
+            response_text = ""
+            for chunk in resp.iter_content(chunk_size=None):
+                if chunk:
+                    text = chunk.decode(errors="ignore")
+                    if text.startswith("data: [DONE]"):
+                        break
+                    if text.startswith("data: "):
+                        text = text[6:]
+                    try:
+                        json_data = json.loads(text)
+                    except json.JSONDecodeError:
+                        click.secho(
+                            f"Error decoding JSON: {text}", fg="red")
+                        continue
+                    if "choices" in json_data and len(json_data["choices"]) > 0:
+                        text = json_data["choices"][0].get("text", "")
+                    click.secho(text, nl=False)
+                    response_text += text
+            return response_text
+    except Exception as e:
+        click.secho(f"Error communicating with model: {e}", fg="red")
 
 
 def chat_with_model(model_name: str, api_url: str):
