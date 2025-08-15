@@ -69,6 +69,13 @@ We are particularly looking for help with:
 *   Testing and verifying models for the curated list.
 *   Improving the CLI experience.
 
+## Credits
+
+HoML stands on the shoulders of giants. We would like to extend our heartfelt gratitude to the developers and communities behind these incredible open-source projects:
+
+*   **[vLLM](https://github.com/vllm-project/vllm):** For the high-performance inference engine that powers HoML.
+*   **[Open WebUI](https://github.com/open-webui/open-webui):** For the user-friendly web interface that enhances the HoML experience.
+
 ## License
 
 This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
