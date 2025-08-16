@@ -53,12 +53,12 @@ For detailed information on how to use the HoML CLI, please refer to our officia
 [**HoML Documentation**](https://homl.dev/docs/cli.html)
 
 ## TODO / Roadmap
-*   Improve vLLM startup time to support faster switching between models.
+*  [v] Improve vLLM startup time to support faster switching between models.
 *   MultiGPU support: Enable multiple models running at the same time on different GPUs.
 *   Enable multiple models running at the same time on the same GPU, this means we need to be able to estimate the vRAM usage of each model and manage the memory accordingly.
 *   Add support for ROCm, Apple Silicon, and other architectures.
 *   Add support for loading adapter layers.
-*   Add support for endpoints other than chatcompletion, such as embeddings and text generation.
+*   Add support for endpoints other than chat/completion, such as embeddings and text generation.
 
 ## Contributing
 
