@@ -24,11 +24,38 @@ service Daemon {
   rpc ListLocalModels (ListLocalModelsRequest) returns (ListLocalModelsResponse) {}
 
   rpc Version (VersionRequest) returns (VersionResponse) {}
+
+  rpc ConfigModel(ModelSettingsRequest) returns (ModelConfigResponse) {}
+  rpc ConfigModelParam(ModelParamRequest) returns (ModelConfigResponse) {}
+  rpc GetModelConfig(ModelInfoRequest) returns (ModelConfigResponse) {}
 }
 
 
 
 // --- Messages ---
+message ModelSettings {
+  map<string, string> settings = 1;
+}
+message ModelParam {
+  repeated string params = 1;
+}
+message ModelConfigResponse {
+  ModelSettings settings = 1;
+  ModelParam params = 2;
+}
+message ModelSettingsRequest {
+  string model_name = 1;
+  ModelSettings settings = 2;
+}
+message ModelParamRequest {
+  string model_name = 1;
+  ModelParam params = 2;
+}
+
+message ModelInfoRequest {
+  string model_name = 1;
+}
+
 message VersionRequest {
 }
 message VersionResponse {
@@ -38,6 +65,7 @@ message VersionResponse {
 message PullModelRequest {
   string model_name = 1;
   string hf_token = 2;
+  bool refresh_config = 3;
 }
 
 message PullModelResponse {
@@ -55,6 +83,8 @@ message PullModelProgress {
 message StartModelRequest {
   string model_name = 1;
   bool eager_mode = 2;
+  ModelParam params = 3;
+  bool use_params = 4;
 }
 
 message StartModelResponse {

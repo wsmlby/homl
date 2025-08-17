@@ -3,10 +3,12 @@ import hashlib
 import multiprocessing
 import os
 from pathlib import Path
+import json
 import threading
 import time
 import uvloop
 import daemon_pb2
+from typing import List
 
 from vllm.utils import (FlexibleArgumentParser)
 from vllm.entrypoints.openai.tool_parsers import ToolParserManager
@@ -21,6 +23,7 @@ logger = logging.getLogger(__name__)
 MODEL_HOME = os.environ.get("HOML_MODEL_HOME", "/models")
 MODEL_LIB = os.path.join(MODEL_HOME, "lib")
 TORCH_CACHE = os.path.join(MODEL_LIB, "torch_cache")
+MODEL_CONFIG_HOME = os.path.join(MODEL_HOME, "config")
 MODEL_LOAD_TIMEOUT = int(os.environ.get(
     "HOML_MODEL_LOAD_TIMEOUT", 180))  # seconds
 # # This is the time after which a model will be unloaded if it is idle
@@ -31,13 +34,14 @@ module_info_cache = os.path.join(MODEL_HOME, "module_info_cache")
 os.makedirs(os.path.join(MODEL_HOME, "home"), exist_ok=True)
 os.makedirs(MODEL_LIB, exist_ok=True)
 os.makedirs(TORCH_CACHE, exist_ok=True)
+os.makedirs(MODEL_CONFIG_HOME, exist_ok=True)
 os.makedirs(module_info_cache, exist_ok=True)
 os.environ["TORCHINDUCTOR_CACHE_DIR"] = TORCH_CACHE
 os.environ["VLLM_LAZY_LOAD_MODULE_INFO_CACHE"] = module_info_cache
 # Ensure cache and lib directories exist
 
 
-def start_server(port: int, model_name: str, model_path: str, eager):
+def start_server(port: int, model_name: str, model_path: str, eager, params: List[str] = []):
     """
     Starts the vLLM server in a separate thread.
     This is a workaround to avoid starting a new process for each request.
@@ -46,7 +50,10 @@ def start_server(port: int, model_name: str, model_path: str, eager):
         description="vLLM OpenAI-Compatible RESTful API server.")
     parser = make_arg_parser(parser)
     args = parser.parse_args(
-        ["--model", model_path, "--port", str(port)] + (["--enforce-eager"] if eager else []))
+        [
+            "--model", model_path, "--port", str(port)
+        ] + (["--enforce-eager"] if eager else []) + params)
+    logger.info(f"Starting vLLM server with args: {args}")
     validate_parsed_serve_args(args)
 
     uvloop.run(run_server(args))
@@ -67,6 +74,21 @@ class ModelManager:
             except Exception as e:
                 logger.error(f"Error loading alias: {e}")
         return {}, {}
+    def get_config(self, model_path):
+        config_path = Path(MODEL_CONFIG_HOME) / (model_path+".json")
+        settings = {}
+        if config_path.exists():
+            config_json = json.load(open(config_path))
+            settings = config_json.get("settings", {})
+            if not settings:
+                settings = {}
+        return settings
+    def save_config(self, model_path, settings):
+        config_path = Path(MODEL_CONFIG_HOME) / (model_path+".json")
+        config_json = {"settings": settings}
+        with open(config_path, "w") as f:
+            json.dump(config_json, f)
+    
 
     def load_manifest(self):
         # Load manifest.json if exists
@@ -192,7 +214,7 @@ class ModelManager:
             return False, model_id, None
         return model_path in self.list_model_paths(), model_id, model_path
 
-    def start_model(self, model_name, eager):
+    def start_model(self, model_name, eager, params: List[str] = [], use_model_default_param: bool = True):
         _, model_id, model_path = self.is_local(model_name)
         if not model_path:
             return False, "Model not available locally", None, None
@@ -234,8 +256,13 @@ class ModelManager:
                     "--port", str(port)
                 ]
                 # proc = subprocess.Popen(cmd, env=env)
+                settings = self.get_config(model_path)
+                params = settings.get("params", []) if use_model_default_param else params
+                logger.info(
+                    f"Starting vLLM server with args: {params}"
+                )
                 proc = self.mp_context.Process(
-                    target=start_server, args=(port, model_name, local_dir, eager))
+                    target=start_server, args=(port, model_name, local_dir, eager, params))
                 proc.start()
 
                 if "gpt-oss" in model_id:
@@ -377,12 +404,17 @@ class ModelManager:
                 if not hf_id:
                     raise ValueError(
                         f"No model_id found for alias '{alias}' variant '{variant}, available variants: {list(info.get('variants', {}).keys())}'")
+                
+                params = info.get("params", [])
+                variant_params = variant_info.get("params", []) if variant_info else []
+                if not variant_params:
+                    variant_info["params"] = params
                 self.add_alias_entry(model_name, hf_id)
-                return hf_id
+                return hf_id, variant_info
             except Exception as e:
                 raise ValueError(
                     f"Failed to resolve alias: {str(e)} from server, please check if https://homl.dev/models/{alias}.html exists")
-        return model_name
+        return model_name, {}
 
     def model_info(self, model_id):
         from huggingface_hub import model_info
@@ -431,6 +463,7 @@ class ModelManager:
         try:
             snapshot_download(repo_id=model_id, local_dir=local_dir,
                               token=hf_token if hf_token else None)
+            return model_path
         except Exception as e:
             import shutil
             shutil.rmtree(local_dir)
