@@ -80,6 +80,31 @@ def config_list():
             # Do not print credentials or sensitive values
             click.echo(f"    Current value: {value}")
 
+@config_cli.command("model")
+@click.argument("model_name", required=True)
+@click.option("--params", help="launch params")
+@click.option("--get", is_flag=True, help="Get model configuration")
+def config_model(model_name, params, get):
+    """Manage model-specific configuration."""
+    stub = get_client_stub()
+    if not stub:
+        click.secho("HoML server is not running.", fg="red")
+        return
+    if get:
+        """Get model configuration."""
+        
+        response = stub.GetModelConfig(daemon_pb2.ModelInfoRequest(model_name=model_name))
+    elif params:
+        params = params.split(" ")
+        response = stub.ConfigModelParam(daemon_pb2.ModelParamRequest(
+            model_name=model_name,
+            params=daemon_pb2.ModelParam(params=params)
+        ))
+    click.echo(f"Model settings for '{model_name}': {response.params.params}: \"{' '.join(response.params.params)}\"")
+
+
+
+
 
 main.add_command(config_cli, name="config")
 
@@ -211,7 +236,8 @@ def stop(model_name):
 
 @main.command()
 @click.argument('model_name')
-def pull(model_name):
+@click.option('--config', 'refresh_config', is_flag=True, help="Refresh the model config. Local config will be overridden if conflict with the model default.")
+def pull(model_name, refresh_config):
     """Pulls a model from a registry."""
     stub = get_client_stub()
     if "gptoss" in model_name.lower():
@@ -235,7 +261,7 @@ def pull(model_name):
         click.echo(f"Pulling model '{model_name}'...")
         try:
             responses = stub.PullModel(daemon_pb2.PullModelRequest(
-                model_name=model_name, hf_token=hf_token))
+                model_name=model_name, hf_token=hf_token, refresh_config=refresh_config))
             for resp in responses:
                 msg = resp.message
                 percent = resp.percent

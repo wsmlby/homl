@@ -55,7 +55,7 @@ def get_model_ready(model_name, model_manager, eager):
     if not model_manager.is_running(model_id):
         logger.info(f"Model {model_id} is not running, starting it")
         if local:
-            ok, msg, port, pid = model_manager.start_model(model_id, eager)
+            ok, msg, port, pid = model_manager.start_model(model_id, eager, [], use_model_default_param=True)
             logger.info(f"Model start response: {msg}")
             if not ok:
                 raise HTTPException(status_code=500, detail=msg)
