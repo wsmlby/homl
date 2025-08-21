@@ -23,4 +23,4 @@ ARG HOML_SERVER_VERSION=dev
 ENV HOML_SERVER_VERSION=$HOML_SERVER_VERSION
 
 # Start the server directly from main.py
-CMD ["python3", "-u", "main.py"]
+ENTRYPOINT ["python3", "-u", "main.py"]
