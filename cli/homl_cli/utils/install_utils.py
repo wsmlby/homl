@@ -156,8 +156,8 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool, install_webui: b
         if not check_and_install_nvidia_runtime():
             return
     else:
-        click.echo(
-            f"Currently only CUDA is supported for GPU acceleration. Using CPU mode instead.")
+        click.echo("No NVIDIA runtime found. Currently only support NVIDIA GPU. Abort.", fg="red")
+        return
 
     # 4. Define paths
 
