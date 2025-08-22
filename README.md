@@ -69,6 +69,13 @@ We are particularly looking for help with:
 *   Testing and verifying models for the curated list.
 *   Improving the CLI experience.
 
+## Community
+
+Join our community to stay updated, ask questions, and contribute to the project:
+
+- **Discord:** [https://discord.gg/WMbWTgK5Hx](https://discord.gg/WMbWTgK5Hx)
+- **X (formerly Twitter):** [https://x.com/holm_llm](https://x.com/holm_llm)
+
 ## Credits
 
 HoML stands on the shoulders of giants. We would like to extend our heartfelt gratitude to the developers and communities behind these incredible open-source projects:
