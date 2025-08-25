@@ -85,11 +85,9 @@ def check_and_install_docker():
 
 
 def get_platform_config(accelerator: str, gptoss: bool) -> Dict[str, Any]:
-    """Returns the docker image and other config for a given platform."""
-    # In the future, these images would be hosted on a public registry.
-    # For now, they are conceptual names.
+    """Returns the docker image and other config for a given platform."""   
     if accelerator == "cuda":
-        return {
+        cfg = {
             "image": "ghcr.io/wsmlby/homl/server:latest-cuda" if not gptoss else "ghcr.io/wsmlby/homl/server:latest-cuda-gptoss",
             "deploy_resources": """
       resources:
@@ -102,10 +100,15 @@ def get_platform_config(accelerator: str, gptoss: bool) -> Dict[str, Any]:
         }
     # TODO: Add support for ROCm and XPU in the future
     else:  # cpu
-        return {
+        cfg = {
             "image": "ghcr.io/wsmlby/homl/server:latest-cpu",
             "deploy_resources": "",
         }
+    
+    if os.environ.get("HOML_DOCKER_IMAGE_OVERRIDE"):
+        cfg["image"] = os.environ["HOML_DOCKER_IMAGE_OVERRIDE"]
+
+    return cfg
 
 
 def check_and_install_nvidia_runtime():
@@ -155,6 +158,7 @@ def install(insecure_socket: bool, upgrade: bool, gptoss: bool, install_webui: b
     if accelerator == "cuda":
         if not check_and_install_nvidia_runtime():
             return
+    # add other platform checks here
     else:
         click.secho("No NVIDIA runtime found. Currently only support NVIDIA GPU. Abort.", fg="red")
         return

@@ -37,7 +37,7 @@ jobs:
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/homl-vllm-cpu-base:latest
           docker buildx build \
             -t ${IMAGE_ID} \
-            -f server/Dockerfile.cpu \
+            -f server/Dockerfile.cpu.base \
             ./vllm-src \
             --push
 
@@ -67,7 +67,7 @@ jobs:
           docker buildx build \
             --build-arg HOML_SERVER_VERSION=$VERSION \
             -t ghcr.io/${{ github.repository_owner }}/homl/server:latest-cpu \
-            -f Dockerfile.cpu.app \
+            -f Dockerfile.cpu \
             . \
             --push
 

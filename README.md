@@ -52,13 +52,14 @@ For detailed information on how to use the HoML CLI, please refer to our officia
 
 [**HoML Documentation**](https://homl.dev/docs/cli.html)
 
+
 ## TODO / Roadmap
-*  [v] Improve vLLM startup time to support faster switching between models.
-*   MultiGPU support: Enable multiple models running at the same time on different GPUs.
-*   Enable multiple models running at the same time on the same GPU, this means we need to be able to estimate the vRAM usage of each model and manage the memory accordingly.
-*   Add support for ROCm, Apple Silicon, and other architectures.
-*   Add support for loading adapter layers.
-*   Add support for endpoints other than chat/completion, such as embeddings and text generation.
+- [x] Improve vLLM startup time to support faster switching between models.
+- [ ] MultiGPU support: Enable multiple models running at the same time on different GPUs.
+- [ ] Enable multiple models running at the same time on the same GPU, this means we need to be able to estimate the vRAM usage of each model and manage the memory accordingly.
+- [ ] Add support for ROCm, Apple Silicon, and other architectures.
+- [ ] Add support for loading adapter layers.
+- [ ] Add support for endpoints other than chat/completion, such as embeddings and text generation.
 
 ## Contributing
 
@@ -68,6 +69,21 @@ We are particularly looking for help with:
 *   Help to host CI for ROCm and Apple Silicon.
 *   Testing and verifying models for the curated list.
 *   Improving the CLI experience.
+
+## Contribute / Build from Source
+Currently only CUDA version is officially supported, but other platform that vLLM can run on is possible if you want to build from source.
+
+### Cli
+See [cli/README.md](cli/README.md)
+
+### Server
+See [server/README.md](server/README.md)
+
+### If you want to add support for a new platform
+
+1. [Create the server for the new platform](server/README.md#other-platforms)
+2. [Update the CLI](cli/README.md#adding-support-for-other-platforms) 
+3. follow the guide there to start the new server
 
 ## Community
 
