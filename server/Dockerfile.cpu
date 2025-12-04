@@ -16,9 +16,9 @@ RUN pip install -r requirements.txt
 # Copy our application source code
 COPY ./homl_server ./
 COPY ./homl_server ./homl_server
-COPY ./vllm_patches ./patches
+# COPY ./vllm_patches ./patches
 
-RUN cd /usr/local/lib/python3.12/dist-packages/vllm && patch -p1 < /app/patches/registry.patch
+# RUN cd /usr/local/lib/python3.12/dist-packages/vllm && patch -p1 < /app/patches/registry.patch
 
 
 ARG HOML_SERVER_VERSION=dev
