@@ -2,8 +2,8 @@
 # It layers our application code on top of the official vLLM OpenAI image.
 
 # Base image for CUDA builds
-# vllm/vllm-openai:v0.10.0
-FROM vllm/vllm-openai@sha256:05a31dc4185b042e91f4d2183689ac8a87bd845713d5c3f987563c5899878271
+# vllm/vllm-openai:nightly-x86_64 @ 12/03/2025
+FROM vllm/vllm-openai@sha256:4031092cf94d81404fa6453659113a5b75e28db41e4fa368f3037ecba254074b
 
 # Set the working directory
 WORKDIR /app
