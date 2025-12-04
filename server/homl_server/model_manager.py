@@ -9,12 +9,11 @@ import time
 import uvloop
 import daemon_pb2
 from typing import List
-
-from vllm.utils import (FlexibleArgumentParser)
+from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.entrypoints.openai.tool_parsers import ToolParserManager
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
-from vllm.entrypoints.openai.api_server import build_app, init_app_state, maybe_register_tokenizer_info_endpoint, build_async_engine_client, run_server, make_arg_parser, validate_parsed_serve_args
+from vllm.entrypoints.openai.api_server import build_app, init_app_state, build_async_engine_client, run_server, make_arg_parser, validate_parsed_serve_args
 import logging
 
 logging.basicConfig(level=logging.INFO)
