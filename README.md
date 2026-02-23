@@ -1,4 +1,7 @@
-# [HoML](https://homl.dev): The best of Ollama and vLLM
+# [HoML](https://homl.dev): The best of Ollama and vLLM 
+
+# Deprecated, [Docker Model Runner](https://docs.docker.com/ai/model-runner/) is the preferred way to run llms with vLLM. 
+
 
 HoML aims to combine the ease of use of Ollama with the high-performance inference capabilities of vLLM. This project provides a simple and intuitive command-line interface (CLI) to run and manage large language models, powered by the speed and compatibility of vLLM.
 
